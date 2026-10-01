@@ -164,6 +164,16 @@ pnpm typecheck                    # 六个包 tsc --noEmit
 pnpm build:client                 # 重建两个 client 半 → lib/client.js
 ```
 
+浏览器实测（opt-in，不自动下载浏览器；`tests/` 下三个脚本按需自备 `playwright` / `vite`）：
+
+```bash
+node tests/verify-card.mjs        # 真实 Chromium 里量像素：曲线/坐标轴命中数，六模式
+node tests/verify-anim.mjs        # 扫掠时曲线屏幕高度必须变化（对照组能失败）
+node tests/verify-axis-still.mjs  # 扫掠时 x 轴必须静止（y 窗口冻结的回归）
+```
+
+三个脚本走环境变量指定外部路径：`SKETCH_CHROME`（Chromium 可执行文件）、`SKETCH_VITE`（vite 入口）。
+
 ## 许可
 
 MIT © 2026 QinLuza

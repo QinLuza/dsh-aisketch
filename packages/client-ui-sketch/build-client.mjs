@@ -49,10 +49,15 @@ const require = createRequire(import.meta.url)
 
 /** Absolute path of an installed esbuild, or `undefined`. */
 function findEsbuild() {
+  // Resolution order: an explicit override, this package's own devDependency,
+  // then the workspace root's. pnpm keeps the real copy under `.pnpm`, so both
+  // layouts are probed -- no absolute path from the author's machine is baked in.
   const roots = [
     process.env.SKETCH_ESBUILD,
-    'D:/AIstudio/GK-AGENT/src/GK-DSH/node_modules/esbuild',
-    'D:/AIstudio/GK-AGENT/src/GK-DSH/node_modules/.pnpm',
+    join(here, 'node_modules', 'esbuild'),
+    join(here, '..', '..', 'node_modules', 'esbuild'),
+    join(here, 'node_modules', '.pnpm'),
+    join(here, '..', '..', 'node_modules', '.pnpm'),
   ].filter((value) => typeof value === 'string' && value !== '')
   for (const root of roots) {
     if (!existsSync(root)) continue
