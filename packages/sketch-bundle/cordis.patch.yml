@@ -1,0 +1,31 @@
+# The AISketch bundle patch: the two model-facing tools and their browser
+# halves, over whatever base layer the profile already mounts.
+#
+# A patch replaces the targeted row's whole `config`, so each row restates every
+# key it owns; rows not listed here are inherited from the base unchanged.
+#
+# Every row is an `insert`, so this bundle never overrides a base row. The tool
+# rows are the Host halves (they register `sketch_function` and `show_card`); the
+# client rows are the browser halves, discovered through each package's own
+# `dsh.client` declaration. The sketch client reaches the page as a
+# `tool.call.toolview` entry keyed by the wire name; the cards client registers
+# the `card` chat node plus the renderer registry, and what a card looks like is
+# decided there by CardSpec.kind -- so a new card type never touches this file.
+#
+# Deliberately absent: `!!js` config expressions. Nothing here needs an
+# evaluated value, and a `!!js` row silently falls back to its default when the
+# service it reads is missing — which is how a mount appears to work while
+# doing nothing.
+
+- insert:
+    - id: sketch-tool
+      name: '@gk/sketch-tool'
+
+    - id: client-ui-sketch
+      name: '@gk/client-ui-sketch'
+
+    - id: cards-tool
+      name: '@gk/cards-tool'
+
+    - id: client-ui-cards
+      name: '@gk/client-ui-cards'

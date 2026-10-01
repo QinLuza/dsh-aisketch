@@ -1,0 +1,13 @@
+# Marks AISketch as a standalone workspace root so `pnpm install` never walks
+# up into a parent workspace. The sketch packages are private to this module —
+# they are NOT part of the dsh base workspace, which is what keeps the base's
+# client-bundle purity gate and its experimental-package policy out of the
+# picture entirely (see AGENTS.md "包归属").
+packages:
+  - packages/*
+
+# esbuild's install script stays blocked on purpose: the suite passes without
+# it (esbuild ships a prebuilt binary for this platform), and we would rather
+# opt in to each install script explicitly than allow them wholesale.
+allowBuilds:
+  esbuild: false

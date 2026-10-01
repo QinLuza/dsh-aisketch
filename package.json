@@ -1,0 +1,22 @@
+{
+  "name": "dsh-aisketch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AISketch for DSH: model-driven conversation cards (table, flowchart) plus deterministic function-graph rendering, with zero changes to the DSH base",
+  "license": "MIT",
+  "author": "QinLuza",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QinLuza/dsh-aisketch.git"
+  },
+  "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
+  "bugs": {
+    "url": "https://github.com/QinLuza/dsh-aisketch/issues"
+  },
+  "scripts": {
+    "test": "pnpm -r --no-bail run test",
+    "typecheck": "pnpm -r --no-bail run typecheck",
+    "build:client": "pnpm --filter @gk/client-ui-sketch --filter @gk/client-ui-cards run build"
+  }
+}

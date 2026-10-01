@@ -1,0 +1,31 @@
+{
+  "name": "@gk/cards-core",
+  "version": "0.1.0",
+  "description": "Generic in-conversation card contract: versioned declarative CardSpec, envelope validation, and the table payload parser shared by the Host tool and the browser renderer",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  },
+  "author": "QinLuza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QinLuza/dsh-aisketch.git"
+  },
+  "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
+  "bugs": {
+    "url": "https://github.com/QinLuza/dsh-aisketch/issues"
+  }
+}
