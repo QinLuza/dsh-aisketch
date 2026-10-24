@@ -207,7 +207,7 @@ pnpm build:client  # 两个 lib/client.js
 
 ## 七、已知限制（照实说）
 
-- **有些卡片会被 DSH 的展示逻辑「吞掉」。** 工具调用按定义属于「回合过程」，而 dsh 的工作步骤展示有「简洁 / 标准 / 详细 / 完全展开」四档；在部分档位/版本下，过程区的卡片会被折叠或藏起来，**只有把信息展示切到「完全展开（verbose）」或展开对应回合才能看到**。这是 dsh 对回合过程的显示策略，**不是卡片没渲染，也不是插件坏了**。本插件已经把产出物同时挂到 `turnTail`，但宿主版本与展示设置仍会影响最终可见性；排查时先切「完全展开」，再看卡片是否在。
+- **有些卡片会被 DSH 的展示逻辑「吞掉」。** 工具调用按定义属于「回合过程」，而 dsh 的工作步骤展示有「简洁 / 标准 / 详细 / 完全展开」四档；在部分档位/版本下，过程区的卡片会被折叠或藏起来，**只有把信息展示切到「完全展开（verbose）」或展开对应回合才能看到**。这是 dsh 对回合过程的显示策略，**不是卡片没渲染，也不是插件坏了**。本插件已经把产出物同时挂到 `turnTail`，但宿主版本与展示设置仍会影响最终可见性；排查时先切「完全展开」，再看卡片是否在。**`table`、`flowchart`、`sketch_function`、`draw`、`figure` 都走同一条通道，表格同样适用**——表格在默认档位被折叠时，切到「完全展开」即可显示。
 - **「完全展开」档下会看到同一张卡两次**（过程行 + 产出物行），这是两张脸的副作用，目前未去重。
 - **「轨迹」页看不到卡片**：卡片的 view target 是 `chat`，轨迹页按设计只显示原始调用。
 - `figure` 目前只有四个模板，不是通用约束求解器；标签位置固定，不做自动避让。
@@ -217,22 +217,11 @@ pnpm build:client  # 两个 lib/client.js
 
 ---
 
-## 八、发布与社区
+## 八、参与贡献
 
-DSH 官方目前**没有插件提交入口或审核流程**，`CONTRIBUTING.md` 的建议是把 GitHub 项目关联到 **`dsh-plugin`** topic；官方插件市场也不内置索引源，第三方索引可通过「自定义索引」添加。社区事实渠道包括：
-
-- GitHub Topics：`dsh-plugin`、`deepseek-harness`、`dsh`；
-- `awesome-dsh-plugin` 精选列表（PR 收录）；
-- `deepseek-ai/deepseek-harness` 的 GitHub Discussions（反馈与展示）。
-
-本仓库使用的 topics / keywords：
-
-```
-dsh-plugin, deepseek-harness, dsh, visualization, diagram,
-table, flowchart, draw, figure, function-plot, svg, agent-tools
-```
-
-欢迎：注册你自己的卡片 `kind`（一个载荷解析器 + 一个渲染器 + 一组测试）；用出问题请带 `show_card` 的原始参数开 issue。
+- 注册你自己的卡片 `kind`：一个载荷解析器 + 一个渲染器 + 一组测试；
+- 用出问题请带 `show_card` 的原始参数开 issue；
+- 如果它帮你省掉了一坨 ASCII 图，欢迎 star。
 
 ---
 
