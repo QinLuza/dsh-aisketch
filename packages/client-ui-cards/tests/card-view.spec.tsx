@@ -119,12 +119,13 @@ function renderTail(cards: readonly unknown[], seq: number): string {
 }
 
 /** One table card as the Turn accumulator stores it. */
-function entry(callId: string, seq: number, title: string) {
+function entry(callId: string, seq: number, title: string, draft = false) {
   return {
     callId,
     seq,
     card: { version: 1, kind: 'table', title, payload: { columns: ['月份', '收入'], rows: [['1月', 120]] } },
     raw: {},
+    draft,
   }
 }
 
@@ -133,6 +134,12 @@ describe('the completed-Turn tail', () => {
     const html = renderTail([entry('call-1', 7, '月度收入')], 100)
     expect(html).toContain('data-card-kind="table"')
     expect(html).toContain('月度收入')
+  })
+
+  it('shows only the final card when a private draft was also recorded', () => {
+    const html = renderTail([entry('draft', 5, '草稿', true), entry('call-1', 7, '定稿')], 100)
+    expect(html).toContain('定稿')
+    expect(html).not.toContain('草稿')
   })
 
   it('keeps the call order the Turn made', () => {

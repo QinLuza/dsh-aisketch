@@ -32,8 +32,8 @@ import {
   freeVariables,
   normalizeMode,
   resolveGeometry,
-} from '@gk/sketch-core'
-import type { Mode, SketchSpec } from '@gk/sketch-core'
+} from '@aisketch/sketch-core'
+import type { Mode, SketchSpec } from '@aisketch/sketch-core'
 
 export const name = 'sketch-tool'
 export const inject = ['tools', 'systemPrompt']

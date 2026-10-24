@@ -19,13 +19,13 @@
 
 - insert:
     - id: sketch-tool
-      name: '@gk/sketch-tool'
+      name: '@aisketch/sketch-tool'
 
     - id: client-ui-sketch
-      name: '@gk/client-ui-sketch'
+      name: '@aisketch/client-ui-sketch'
 
     - id: cards-tool
-      name: '@gk/cards-tool'
+      name: '@aisketch/cards-tool'
 
     - id: client-ui-cards
-      name: '@gk/client-ui-cards'
+      name: '@aisketch/client-ui-cards'

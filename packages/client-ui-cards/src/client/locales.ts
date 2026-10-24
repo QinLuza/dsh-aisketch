@@ -14,6 +14,15 @@ export const zh = {
   'table.summary': '{rows} 行 · {columns} 列',
   'flowchart.title': '流程图',
   'flowchart.summary': '{nodes} 个节点 · {edges} 条连线',
+  'draw.title': '手绘',
+  'draw.summary': '{elements} 个元素 · {w}×{h}',
+  'figure.title': '科学示意图',
+  'figure.summary.incline': '{angle}° · {mass} kg · μ {friction}',
+  'figure.summary.connected': 'm₁ {surface} kg · m₂ {hanging} kg · μ {friction}',
+  'figure.summary.orbital': '{symbol} · Z={z} · 电子排布/轨道图',
+  'figure.summary.atom': '{symbol} · Z={z}',
+  'card.expand': '放大显示',
+  'card.close': '关闭',
 } satisfies Record<string, string>
 
 /** The cards namespace key union. */
@@ -30,6 +39,15 @@ export const en = {
   'table.summary': '{rows} rows · {columns} columns',
   'flowchart.title': 'Flowchart',
   'flowchart.summary': '{nodes} nodes · {edges} edges',
+  'draw.title': 'Sketch',
+  'draw.summary': '{elements} elements · {w}×{h}',
+  'figure.title': 'Scientific figure',
+  'figure.summary.incline': '{angle}° · {mass} kg · μ {friction}',
+  'figure.summary.connected': 'm₁ {surface} kg · m₂ {hanging} kg · μ {friction}',
+  'figure.summary.orbital': '{symbol} · Z={z} · electron configuration',
+  'figure.summary.atom': '{symbol} · Z={z}',
+  'card.expand': 'Expand',
+  'card.close': 'Close',
 } satisfies Record<CardKey, string>
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

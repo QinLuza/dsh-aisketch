@@ -22,6 +22,9 @@ export const CLS = {
   title: 'sk-title',
   chip: 'sk-chip',
   action: 'sk-action',
+  actions: 'sk-actions',
+  overlay: 'sk-overlay',
+  dialog: 'sk-dialog',
   canvas: 'sk-canvas',
   params: 'sk-params',
   paramsLabel: 'sk-params-label',
@@ -62,9 +65,14 @@ const SHEET = `
   color: var(--dsw-alias-text-secondary, #5f6368);
   font-size: calc(11px + var(--dsh-content-font-delta, 0px));
 }
+.${CLS.actions} {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
 .${CLS.action} {
   flex: none;
-  margin-left: auto;
   padding: 2px 10px;
   border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
   border-radius: 6px;
@@ -123,6 +131,26 @@ const SHEET = `
 .${CLS.empty} {
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-text-secondary, #5f6368);
+}
+.${CLS.overlay} {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3vh 3vw;
+  background: rgba(20, 20, 24, 0.42);
+}
+.${CLS.dialog} {
+  max-width: 96vw;
+  max-height: 94vh;
+  overflow: auto;
+  padding: 12px 16px 16px;
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-base, #fff);
+  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
 }
 `
 

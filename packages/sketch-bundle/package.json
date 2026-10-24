@@ -1,9 +1,8 @@
 {
-  "name": "@gk/sketch-bundle",
-  "version": "0.1.0",
+  "name": "@aisketch/sketch-bundle",
+  "version": "0.2.0",
   "description": "AISketch bundle: mounts the sketch_function tool, its browser card, and the generic show_card card channel into a dsh profile",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "main": "./src/index.ts",
   "exports": {
@@ -12,10 +11,10 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@gk/sketch-tool": "workspace:*",
-    "@gk/client-ui-sketch": "workspace:*",
-    "@gk/cards-tool": "workspace:*",
-    "@gk/client-ui-cards": "workspace:*",
+    "@aisketch/sketch-tool": "workspace:*",
+    "@aisketch/client-ui-sketch": "workspace:*",
+    "@aisketch/cards-tool": "workspace:*",
+    "@aisketch/client-ui-cards": "workspace:*",
     "@deepseek-ai/cordis": "4.0.4"
   },
   "devDependencies": {
@@ -34,5 +33,24 @@
   "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
   "bugs": {
     "url": "https://github.com/QinLuza/dsh-aisketch/issues"
-  }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "show-card",
+    "function-plot",
+    "table",
+    "flowchart",
+    "draw",
+    "figure",
+    "visualization"
+  ],
+  "engines": {
+    "dsh": ">=0.1.7-rc.2 <0.2.0"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml"
+  ]
 }

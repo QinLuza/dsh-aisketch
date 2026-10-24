@@ -15,8 +15,8 @@
  */
 
 import type { ComponentType } from 'react'
-import { CARD_KIND_PATTERN, MAX_KIND_LENGTH } from '@gk/cards-core'
-import type { CardSpec } from '@gk/cards-core'
+import { CARD_KIND_PATTERN, MAX_KIND_LENGTH } from '@aisketch/cards-core'
+import type { CardSpec } from '@aisketch/cards-core'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import type { NS } from './locales.ts'
 

@@ -12,8 +12,8 @@
  * so the waveform looks pinned to a band while everything moves. Corners are
  * what any combination of slider positions can reach.
  */
-import { resolveGeometry } from '@gk/sketch-core'
-import type { ParamSpec, Range, SketchSpec } from '@gk/sketch-core'
+import { build, resolveGeometry, splitCurveLine } from '@aisketch/sketch-core'
+import type { CompiledFn, ParamSpec, Range, SketchSpec } from '@aisketch/sketch-core'
 
 /** The current value of each declared parameter. */
 export type ParamValues = Readonly<Record<string, number>>
@@ -63,6 +63,33 @@ export function withValues(spec: SketchSpec, values: ParamValues): SketchSpec {
 export function stepOf(tuple: ParamSpec): number {
   const span = tuple[1] - tuple[0]
   return Number.isFinite(span) && span > 0 ? span / 200 : 0.01
+}
+
+/**
+ * One compiled evaluator per plotted expression, keyed by the bare expression.
+ *
+ * A comparison entry arrives as `label, expr`, so the label comes off before
+ * compiling: building the raw line once threw
+ * `ParseError: Unexpected character "高"` on a Chinese label, and because the
+ * compile ran during render it took the whole card slot down with it
+ * (2026-10-18). `splitCurveLine` is the same splitter the engine uses, so the
+ * card cannot disagree with the geometry it draws; an expression that still
+ * refuses to compile simply has no tracer rather than no card.
+ * @param spec - the persisted spec.
+ * @returns the evaluator map the hover readout draws from.
+ */
+export function compileCurves(spec: SketchSpec): ReadonlyMap<string, CompiledFn> {
+  const map = new Map<string, CompiledFn>()
+  const expressions = [spec.expr, ...(spec.compare ?? []).map(line => splitCurveLine(line).expr)]
+  for (const expr of expressions) {
+    if (map.has(expr)) continue
+    try {
+      map.set(expr, build(expr).eval)
+    } catch {
+      // A refused expression has no curve to trace; the picture still draws.
+    }
+  }
+  return map
 }
 
 /** The y-window the engine would choose for one spec, as a probe candidate. */

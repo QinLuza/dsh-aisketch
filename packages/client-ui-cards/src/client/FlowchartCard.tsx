@@ -11,10 +11,11 @@
  * malformed table: a refused card the model can read is a card the model can fix.
  */
 
-import { parseFlowchartPayload } from '@gk/cards-core'
+import { parseFlowchartPayload } from '@aisketch/cards-core'
 import type { CardRendererProps } from './registry.ts'
 import { estimateTextWidth, LINE_HEIGHT, layoutFlowchart } from './flowchart-layout.ts'
 import type { FlowchartBox } from './flowchart-layout.ts'
+import { CardFrame } from './CardFrame.tsx'
 import { RawCard } from './RawCard.tsx'
 import { CLS } from './styles.ts'
 
@@ -77,12 +78,12 @@ export function FlowchartCard({ card, t }: CardRendererProps) {
   const layout = layoutFlowchart(flowchart)
   const summary = t('flowchart.summary', { nodes: flowchart.nodes.length, edges: flowchart.edges.length })
   return (
-    <div className={CLS.card} data-card-kind="flowchart">
-      <div className={CLS.head}>
-        <span className={CLS.title}>{card.title ?? t('flowchart.title')}</span>
-        <span className={CLS.kind}>{card.kind}</span>
-        <span className={CLS.summary}>{summary}</span>
-      </div>
+    <CardFrame
+      kind={card.kind}
+      title={card.title ?? t('flowchart.title')}
+      summary={summary}
+      t={t}
+    >
       <div className={CLS.scroll}>
         <svg
           className={CLS.chart}
@@ -122,6 +123,6 @@ export function FlowchartCard({ card, t }: CardRendererProps) {
           {layout.boxes.map((box) => <NodeShape key={box.id} box={box} />)}
         </svg>
       </div>
-    </div>
+    </CardFrame>
   )
 }

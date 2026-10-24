@@ -4,7 +4,7 @@
  * The unit tests exercise the renderer against a recording stub, which proves
  * the right primitives are emitted but says nothing about what lands on screen.
  * This script closes that gap: it bundles the real `render.ts` plus
- * `@gk/sketch-core`, paints the six modes into a real canvas in real Chromium,
+ * `@aisketch/sketch-core`, paints the six modes into a real canvas in real Chromium,
  * and measures the resulting pixels.
  *
  * Prerequisite (one-off; this folder has no package.json on purpose so the
@@ -45,7 +45,7 @@ async function bundle() {
   const dir = mkdtempSync(path.join(tmpdir(), 'aisketch-verify-'))
   const entry = path.join(dir, 'entry.js')
   writeFileSync(entry, [
-    "import { resolveGeometry } from '@gk/sketch-core'",
+    "import { resolveGeometry } from '@aisketch/sketch-core'",
     "import { COLORS, Viewport, drawAxes, drawCurve, drawCartesianChart, drawPieChart, drawPoint, drawRiemann } from 'render'",
     'globalThis.AISketch = { resolveGeometry, COLORS, Viewport, drawAxes, drawCurve, drawCartesianChart, drawPieChart, drawPoint, drawRiemann }',
   ].join('\n'))
@@ -55,7 +55,7 @@ async function bundle() {
     logLevel: process.env.SKETCH_VITE_QUIET === '1' ? 'silent' : 'warn',
     resolve: {
       alias: {
-        '@gk/sketch-core': path.join(pkgRoot, 'sketch-core', 'src', 'index.ts'),
+        '@aisketch/sketch-core': path.join(pkgRoot, 'sketch-core', 'src', 'index.ts'),
         render: path.join(pkgRoot, 'client-ui-sketch', 'src', 'client', 'render.ts'),
       },
     },

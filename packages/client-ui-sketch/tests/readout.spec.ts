@@ -8,7 +8,7 @@
  * the cursor is actually on.
  */
 import { describe, expect, it } from 'vitest'
-import { build } from '@gk/sketch-core'
+import { build } from '@aisketch/sketch-core'
 import { Viewport } from '../src/client/render.ts'
 import { formatReadout, pickReadout } from '../src/client/readout.ts'
 

@@ -62,7 +62,7 @@ export function apply(ctx: ClientContext): void {
     SketchCard,
   ))
   ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register(
-    { name: 'conversation.chat.turnTail', id: '@gk/client-ui-sketch', locale: NS },
+    { name: 'conversation.chat.turnTail', id: '@aisketch/client-ui-sketch', locale: NS },
     SketchTail,
   ))
 }

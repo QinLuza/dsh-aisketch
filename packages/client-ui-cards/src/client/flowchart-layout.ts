@@ -18,7 +18,7 @@
  * breaking the ranking, so a process with a loop still lays out.
  */
 
-import type { FlowchartEdge, FlowchartNode, FlowchartPayload, FlowchartShape } from '@gk/cards-core'
+import type { FlowchartEdge, FlowchartNode, FlowchartPayload, FlowchartShape } from '@aisketch/cards-core'
 
 /** Font size of a node label, in px; the stylesheet declares the same size. */
 export const LABEL_FONT_SIZE = 12

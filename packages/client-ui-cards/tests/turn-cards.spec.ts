@@ -12,7 +12,7 @@
  * every card reach the tail as raw fallback while unit tests stayed green.
  */
 import { describe, expect, it } from 'vitest'
-import { CARD_TOOL_NAME } from '@gk/cards-core'
+import { CARD_TOOL_NAME } from '@aisketch/cards-core'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { cardTurnDefinition, selectCardsTurn } from '../src/client/turn-cards.ts'
 
@@ -114,6 +114,16 @@ describe('accumulation', () => {
     expect(state.cards[0]).toMatchObject({ card: null, raw: '{' })
   })
 
+  it('marks a private drawing draft while keeping it out of the node face', () => {
+    let state = openTurn()
+    state = fold(state, callEvent({
+      kind: 'draw',
+      draft: true,
+      payload: { elements: [{ type: 'path', d: 'M 0 0 L 10 10' }] },
+    }, 7, 'draft-1'))
+    expect(state.cards[0]).toMatchObject({ draft: true, card: { kind: 'draw' } })
+  })
+
   it('keeps a parsed-but-invalid envelope as data, not as an escaped string', () => {
     let state = openTurn()
     state = fold(state, callEvent({ kind: '../escape', payload: {} }))
@@ -158,5 +168,21 @@ describe('what the tail selects', () => {
     ]
     const selected = selectCardsTurn(owner(cards, 100))
     expect(selected?.map(entry => entry.callId)).toEqual(['call-1'])
+  })
+
+  it('hides a private draft once a final drawing exists', () => {
+    const cards = [
+      { callId: 'draft', seq: 7, card: { version: 1, kind: 'draw', payload: {} }, raw: {}, draft: true },
+      { callId: 'final', seq: 9, card: { version: 1, kind: 'draw', payload: {} }, raw: {}, draft: false },
+    ]
+    expect(selectCardsTurn(owner(cards, 100))?.map(entry => entry.callId)).toEqual(['final'])
+  })
+
+  it('falls back to the last draw draft when the model never published a final', () => {
+    const cards = [
+      { callId: 'draft-1', seq: 7, card: { version: 1, kind: 'draw', payload: {} }, raw: {}, draft: true },
+      { callId: 'draft-2', seq: 11, card: { version: 1, kind: 'draw', payload: {} }, raw: {}, draft: true },
+    ]
+    expect(selectCardsTurn(owner(cards, 100))?.map(entry => entry.callId)).toEqual(['draft-2'])
   })
 })

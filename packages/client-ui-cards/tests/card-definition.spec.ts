@@ -12,7 +12,7 @@
  * fallback while every unit test stayed green.
  */
 import { describe, expect, it } from 'vitest'
-import { CARD_TOOL_NAME } from '@gk/cards-core'
+import { CARD_TOOL_NAME } from '@aisketch/cards-core'
 import { CARD_NODE_KIND, cardDefinition } from '../src/client/card-definition.ts'
 
 type SessionEventLike = Parameters<typeof cardDefinition.match>[0]
@@ -109,6 +109,24 @@ describe('the published node', () => {
   it('keeps an unknown kind, so a newer renderer can still claim the node', () => {
     const node = project(callEvent({ kind: 'school.timetable', payload: { slots: [] } }))
     expect(node?.data).toMatchObject({ card: { kind: 'school.timetable' } })
+  })
+
+  it('publishes no card for a private drawing draft', () => {
+    const node = project(callEvent({
+      kind: 'draw',
+      draft: true,
+      payload: { elements: [{ type: 'path', d: 'M 0 0 L 10 10' }] },
+    }))
+    expect(node).toBeNull()
+  })
+
+  it('publishes the final call, where draft is false or omitted', () => {
+    const node = project(callEvent({
+      kind: 'draw',
+      draft: false,
+      payload: { elements: [{ type: 'path', d: 'M 0 0 L 10 10' }] },
+    }))
+    expect(node?.data).toMatchObject({ card: { kind: 'draw' } })
   })
 
   it('replays from the persisted argument text a reload hands back', () => {

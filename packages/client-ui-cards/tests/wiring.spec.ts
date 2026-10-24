@@ -105,10 +105,14 @@ describe('the service gate', () => {
       'client-ui-cards: dictionaries',
       'client-ui-cards: table renderer',
       'client-ui-cards: flowchart renderer',
+      'client-ui-cards: draw renderer',
+      'client-ui-cards: figure renderer',
     ])
     // A kind without its claim is invisible: the card would reach the page and
     // render as raw data, which is exactly the failure this list catches.
     expect(wiring.rendererKinds).toContain('table')
     expect(wiring.rendererKinds).toContain('flowchart')
+    expect(wiring.rendererKinds).toContain('draw')
+    expect(wiring.rendererKinds).toContain('figure')
   })
 })

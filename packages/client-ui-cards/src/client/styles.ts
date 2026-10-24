@@ -38,6 +38,15 @@ export const CLS = {
   processNode: 'cd-node-process',
   decisionNode: 'cd-node-decision',
   nodeLabel: 'cd-node-label',
+  drawScroll: 'cd-draw-scroll',
+  drawSvg: 'cd-draw-svg',
+  drawText: 'cd-draw-text',
+  drawHand: 'cd-draw-hand',
+  figureScroll: 'cd-figure-scroll',
+  figureSvg: 'cd-figure-svg',
+  expand: 'cd-expand',
+  overlay: 'cd-overlay',
+  dialog: 'cd-dialog',
 } as const
 
 const SHEET = `
@@ -167,6 +176,87 @@ const SHEET = `
 .${CLS.nodeLabel} {
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
   fill: var(--dsw-alias-text-primary, #1f1f1f);
+}
+.${CLS.drawScroll} {
+  max-height: 460px;
+  overflow: auto;
+  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base, #fff);
+}
+.${CLS.drawSvg} {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.${CLS.drawText} {
+  font-family: inherit;
+}
+.${CLS.drawHand} {
+  font-family: 'Segoe Script', 'Comic Sans MS', 'KaiTi', '楷体', 'Kaiti SC', 'STKaiti', cursive;
+}
+.${CLS.figureScroll} {
+  max-height: 460px;
+  overflow: auto;
+  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  background: #ffffff;
+}
+.${CLS.figureSvg} {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  background: #ffffff;
+}
+.${CLS.expand} {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-text-secondary, #5f6368);
+  font-size: calc(12px + var(--dsh-content-font-delta, 0px));
+  line-height: 1.4;
+  cursor: pointer;
+}
+.${CLS.expand}:hover {
+  background: color-mix(in srgb, var(--dsw-alias-bg-base, #fff) 92%, #378add);
+}
+.${CLS.overlay} {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3vh 3vw;
+  background: rgba(20, 20, 24, 0.42);
+}
+.${CLS.dialog} {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(96vw, 1280px);
+  max-height: 94vh;
+  overflow: auto;
+  padding: 14px 18px 18px;
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-base, #fff);
+  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+}
+.${CLS.dialog} .${CLS.scroll},
+.${CLS.dialog} .${CLS.drawScroll} {
+  max-height: none;
+}
+.${CLS.dialog} .${CLS.chart},
+.${CLS.dialog} .${CLS.drawSvg} {
+  width: 100%;
+  height: auto;
+}
+.${CLS.dialog} .${CLS.table} {
+  font-size: calc(14px + var(--dsh-content-font-delta, 0px));
 }
 `
 

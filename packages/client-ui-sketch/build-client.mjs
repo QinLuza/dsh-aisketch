@@ -11,7 +11,7 @@
  * What stays external is decided by the platform module table: React and the
  * `@deepseek-ai/dsh-client-*` services are supplied by the shipped web bundle,
  * and bundling a second React copy into a card would be a second React.
- * `@gk/sketch-core` is ours and is inlined, which is the whole point of the
+ * `@aisketch/sketch-core` is ours and is inlined, which is the whole point of the
  * single-source private-inline layout.
  *
  * esbuild is resolved from the dsh checkout on purpose: this package keeps no

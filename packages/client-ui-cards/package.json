@@ -1,9 +1,8 @@
 {
-  "name": "@gk/client-ui-cards",
-  "version": "0.1.0",
+  "name": "@aisketch/client-ui-cards",
+  "version": "0.2.0",
   "description": "Generic in-conversation card renderer: one chat node kind keyed by CardSpec.kind, dispatched through a client-side renderer registry",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "main": "./src/index.ts",
   "exports": {
@@ -17,7 +16,7 @@
     "build": "node build-client.mjs"
   },
   "dependencies": {
-    "@gk/cards-core": "workspace:*"
+    "@aisketch/cards-core": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
@@ -53,5 +52,16 @@
   "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
   "bugs": {
     "url": "https://github.com/QinLuza/dsh-aisketch/issues"
-  }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "card",
+    "renderer",
+    "svg",
+    "table",
+    "flowchart",
+    "figure"
+  ]
 }

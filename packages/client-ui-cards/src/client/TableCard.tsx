@@ -9,9 +9,10 @@
  * model can fix.
  */
 
-import { parseTablePayload } from '@gk/cards-core'
-import type { TableCell } from '@gk/cards-core'
+import { parseTablePayload } from '@aisketch/cards-core'
+import type { TableCell } from '@aisketch/cards-core'
 import type { CardRendererProps } from './registry.ts'
+import { CardFrame } from './CardFrame.tsx'
 import { RawCard } from './RawCard.tsx'
 import { CLS } from './styles.ts'
 
@@ -42,14 +43,12 @@ export function TableCard({ card, t }: CardRendererProps) {
     )
   }
   return (
-    <div className={CLS.card} data-card-kind="table">
-      <div className={CLS.head}>
-        <span className={CLS.title}>{card.title ?? t('table.title')}</span>
-        <span className={CLS.kind}>{card.kind}</span>
-        <span className={CLS.summary}>
-          {t('table.summary', { rows: table.rows.length, columns: table.columns.length })}
-        </span>
-      </div>
+    <CardFrame
+      kind={card.kind}
+      title={card.title ?? t('table.title')}
+      summary={t('table.summary', { rows: table.rows.length, columns: table.columns.length })}
+      t={t}
+    >
       <div className={CLS.scroll}>
         {table.rows.length === 0
           ? <div className={CLS.empty}>{t('table.empty')}</div>
@@ -80,6 +79,6 @@ export function TableCard({ card, t }: CardRendererProps) {
             </table>
           )}
       </div>
-    </div>
+    </CardFrame>
   )
 }

@@ -1,9 +1,8 @@
 {
-  "name": "@gk/cards-tool",
-  "version": "0.1.0",
+  "name": "@aisketch/cards-tool",
+  "version": "0.2.0",
   "description": "Model-facing show_card tool: emits a versioned declarative CardSpec the conversation renders natively, instead of generated HTML",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "main": "./src/index.ts",
   "exports": {
@@ -15,7 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@gk/cards-core": "workspace:*"
+    "@aisketch/cards-core": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
@@ -35,5 +34,15 @@
   "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
   "bugs": {
     "url": "https://github.com/QinLuza/dsh-aisketch/issues"
-  }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "show-card",
+    "table",
+    "flowchart",
+    "draw",
+    "figure"
+  ]
 }

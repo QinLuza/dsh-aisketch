@@ -8,6 +8,8 @@
  *
  * This face sits inside the Turn's process and is therefore folded away when the
  * Turn completes; `CardTail` repeats the same cards where the fold cannot reach.
+ * Private draft calls never reach this node: they are a preview for the model,
+ * not an artifact of the answer.
  */
 
 import { memo } from 'react'

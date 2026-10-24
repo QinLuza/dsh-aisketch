@@ -2,7 +2,7 @@
  * Canvas rendering for the AISketch card.
  *
  * This is a typed port of the prototype's `renderer.js`. It lives in the
- * browser package rather than in `@gk/sketch-core` on purpose: the core owns
+ * browser package rather than in `@aisketch/sketch-core` on purpose: the core owns
  * the maths (what curve to draw), this owns the pixels (how it looks). The
  * split keeps `sketch-core` headless-testable and lets each half be bundled
  * independently.

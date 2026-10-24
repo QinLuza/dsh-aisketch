@@ -1,9 +1,8 @@
 {
-  "name": "@gk/sketch-core",
-  "version": "0.1.0",
+  "name": "@aisketch/sketch-core",
+  "version": "0.2.0",
   "description": "AISketch core: dependency-free expression parser, closed-interpreter evaluator, numerical methods, spec compaction, and geometry resolution",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "main": "./src/index.ts",
   "exports": {
@@ -30,5 +29,12 @@
   "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
   "bugs": {
     "url": "https://github.com/QinLuza/dsh-aisketch/issues"
-  }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "expression-parser",
+    "plotting"
+  ]
 }

@@ -4,7 +4,7 @@
  * Shared by the toolview card and the completed-Turn tail so the two surfaces
  * cannot drift on what counts as a drawable result.
  */
-import type { SketchSpec } from '@gk/sketch-core'
+import type { SketchSpec } from '@aisketch/sketch-core'
 
 /**
  * Narrow the persisted presentation metadata to the spec this plugin understands.

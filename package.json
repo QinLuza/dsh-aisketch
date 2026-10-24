@@ -1,8 +1,8 @@
 {
   "name": "dsh-aisketch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "AISketch for DSH: model-driven conversation cards (table, flowchart) plus deterministic function-graph rendering, with zero changes to the DSH base",
+  "description": "AISketch for DSH: semantic conversation cards (table, flowchart, hand-drawn draw, teaching figures) plus expression-driven function plots, with zero base changes",
   "license": "MIT",
   "author": "QinLuza",
   "type": "module",
@@ -17,6 +17,24 @@
   "scripts": {
     "test": "pnpm -r --no-bail run test",
     "typecheck": "pnpm -r --no-bail run typecheck",
-    "build:client": "pnpm --filter @gk/client-ui-sketch --filter @gk/client-ui-cards run build"
+    "build:client": "pnpm --filter @aisketch/client-ui-sketch --filter @aisketch/client-ui-cards run build"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "show-card",
+    "table",
+    "flowchart",
+    "draw",
+    "figure",
+    "function-plot",
+    "visualization",
+    "svg",
+    "teaching",
+    "diagram"
+  ],
+  "engines": {
+    "node": ">=22"
   }
 }

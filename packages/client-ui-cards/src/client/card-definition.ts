@@ -3,7 +3,8 @@
  *
  * It matches the `show_card` tool's *call* -- not its result -- so a card
  * appears while the tool is still running, and it reads the card straight out
- * of the call arguments. Those arguments already live in the transcript, so a
+ * of the call arguments. A call marked draft:true is a private preview for the
+ * model and publishes no card; only the finished call produces a node. Those arguments already live in the transcript, so a
  * replayed session rebuilds the identical card with no Host round trip and no
  * second source of truth to drift.
  *
@@ -12,8 +13,8 @@
  * A bad card the model can see is a card the model can fix.
  */
 
-import { CARD_TOOL_NAME, parseCardSpec } from '@gk/cards-core'
-import type { CardSpec } from '@gk/cards-core'
+import { CARD_TOOL_NAME, parseCardSpec } from '@aisketch/cards-core'
+import type { CardSpec } from '@aisketch/cards-core'
 import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
 /** The chat node kind this plugin owns; also the `conversation.chat.node` slot key. */
@@ -30,6 +31,8 @@ export interface CardNodeData {
 interface CardNodeState extends CardNodeData {
   readonly seq: number
   readonly callId: string
+  /** A private draft submits no visible card; only the finished drawing does. */
+  readonly draft: boolean
 }
 
 /**
@@ -56,6 +59,22 @@ export function readCallArguments(value: unknown): { readonly parsed: unknown; r
   }
 }
 
+/**
+ * Whether one call is a private draft.
+ *
+ * The flag lives on the tool call, not in the CardSpec: it controls delivery,
+ * not the picture. A draft still returns its preview and self-check to the
+ * model, but the conversation must not show its card. Replay reads the same
+ * persisted argument text, so the draft stays invisible after a reload.
+ * @param parsed - the call arguments after JSON parsing, or the object itself.
+ * @returns true only for an explicit boolean true.
+ */
+export function isPrivateDraft(parsed: unknown): boolean {
+  return typeof parsed === 'object'
+    && parsed !== null
+    && (parsed as { readonly draft?: unknown }).draft === true
+}
+
 declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap {
     /** One generic card, emitted by the `show_card` Tool. */
@@ -63,7 +82,7 @@ declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   }
 }
 
-/** Project one card per `show_card` call. */
+/** Project one card per public `show_card` call; private drafts publish no node. */
 export const cardDefinition: ConversationNodeDefinition<CardNodeState> = {
   kind: 'cards',
   target: 'chat',
@@ -84,11 +103,16 @@ export const cardDefinition: ConversationNodeDefinition<CardNodeState> = {
       // Unparseable text stays visible verbatim; a parsed-but-invalid envelope
       // shows as data instead of an escaped string.
       raw: call.parsed === undefined ? call.text : call.parsed,
+      draft: isPrivateDraft(call.parsed),
     }
   },
   update: context => context.state,
   buildViewNode: (context) => {
     if (context.state === undefined) return null
+    // A private draft is a picture for the model to inspect, not an artifact of
+    // the answer. The completed-Turn tail applies the same rule and falls back
+    // to the last draft only when no final card was ever published.
+    if (context.state.draft) return null
     return {
       key: context.key,
       kind: CARD_NODE_KIND,

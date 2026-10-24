@@ -1,9 +1,8 @@
 {
-  "name": "@gk/client-ui-sketch",
-  "version": "0.1.0",
+  "name": "@aisketch/client-ui-sketch",
+  "version": "0.2.0",
   "description": "AISketch browser card: renders the sketch_function tool view as a live Canvas plot",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "main": "./src/index.ts",
   "exports": {
@@ -17,7 +16,7 @@
     "build": "node build-client.mjs"
   },
   "dependencies": {
-    "@gk/sketch-core": "workspace:*"
+    "@aisketch/sketch-core": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
@@ -32,7 +31,9 @@
     "esbuild": "^0.25.12",
     "react": "^18.2.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "@types/react-dom": "~18.3.1",
+    "react-dom": "^18.2.0"
   },
   "dsh": {
     "client": {
@@ -54,5 +55,13 @@
   "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
   "bugs": {
     "url": "https://github.com/QinLuza/dsh-aisketch/issues"
-  }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "function-plot",
+    "canvas",
+    "visualization"
+  ]
 }

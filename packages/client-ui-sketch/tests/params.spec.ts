@@ -8,9 +8,33 @@
  * that yields a zero or NaN slider step.
  */
 import { describe, expect, it } from 'vitest'
-import { resolveGeometry } from '@gk/sketch-core'
-import type { SketchSpec } from '@gk/sketch-core'
-import { freezeWindow, initialValues, stepOf, withValues } from '../src/client/params.ts'
+import { resolveGeometry } from '@aisketch/sketch-core'
+import type { SketchSpec } from '@aisketch/sketch-core'
+import { compileCurves, freezeWindow, initialValues, stepOf, withValues } from '../src/client/params.ts'
+
+describe('compileCurves', () => {
+  it('strips the label from a comparison line before compiling it', () => {
+    // The regression: compiling the raw "高斯, exp(-x^2)" line threw
+    // `ParseError: Unexpected character "高"` during render and took the whole
+    // card slot down (2026-10-18).
+    const spec: SketchSpec = { expr: 'sin(x)/x', mode: 'compare', compare: ['高斯, exp(-x^2)', '直线, x/3'] }
+    const compiled = compileCurves(spec)
+    expect([...compiled.keys()].sort()).toEqual(['exp(-x^2)', 'sin(x)/x', 'x/3'])
+    for (const fn of compiled.values()) expect(typeof fn).toBe('function')
+  })
+
+  it('keeps a bare expression and skips one the interpreter refuses', () => {
+    const spec: SketchSpec = { expr: 'sin(x)', compare: ['cos(x)', '1 +'] }
+    const compiled = compileCurves(spec)
+    expect([...compiled.keys()].sort()).toEqual(['cos(x)', 'sin(x)'])
+  })
+
+  it('evaluates the compiled comparison curve at a point', () => {
+    const compiled = compileCurves({ expr: 'sin(x)', compare: ['高斯, exp(-x^2)'] })
+    const gauss = compiled.get('exp(-x^2)')
+    expect(gauss?.({ x: 0 })).toBeCloseTo(1)
+  })
+})
 
 describe('initialValues', () => {
   it('rests every parameter at the value the call declared', () => {

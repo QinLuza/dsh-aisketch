@@ -13,6 +13,8 @@
  * the persisted `tool/call` arguments.
  */
 
+import { FIGURE_KIND, checkFigurePayload, parseFigurePayload, summarizeFigure } from './figure.ts'
+
 /** Wire name of the Tool that emits a card; the client projects its node on it. */
 export const CARD_TOOL_NAME = 'show_card'
 
@@ -66,6 +68,235 @@ export const MAX_FLOWCHART_ID_LENGTH = 32
 
 /** Node and connection label ceiling, in characters. */
 export const MAX_FLOWCHART_LABEL_LENGTH = 48
+
+/**
+ * The sketch `kind` this release renders natively.
+ *
+ * The third native kind imports the drawing surface of a note app: the model
+ * states *strokes* -- pen paths, shapes, labels, tape -- and the deterministic
+ * client engine turns them into a hand-drawn picture. As with the flowchart,
+ * the model never sends rendered markup: the path grammar below is parsed into
+ * commands and never evaluated, and every pen effect (fountain taper,
+ * calligraphy nib, pencil grain) is computed from geometry the engine derives,
+ * not authored by hand.
+ */
+export const DRAW_KIND = 'draw'
+
+/** Element ceiling for {@link DRAW_KIND}. */
+export const MAX_DRAW_ELEMENTS = 300
+
+/** Ceiling for one path element's `d` length, in characters. */
+export const MAX_DRAW_PATH_LENGTH = 1200
+
+/** Ceiling for one text element's characters, newlines included. */
+export const MAX_DRAW_TEXT_LENGTH = 160
+
+/** Stroke width bounds for {@link DRAW_KIND} elements. */
+export const MIN_DRAW_WIDTH = 0.3
+export const MAX_DRAW_WIDTH = 24
+
+/** Canvas width bounds for {@link DRAW_KIND}. */
+export const MIN_DRAW_SIZE_W = 120
+export const MAX_DRAW_SIZE_W = 1600
+
+/** Canvas height bounds for {@link DRAW_KIND}. */
+export const MIN_DRAW_SIZE_H = 100
+export const MAX_DRAW_SIZE_H = 1200
+
+/** Default canvas size: fits the chat column without scrolling. */
+export const DEFAULT_DRAW_SIZE_W = 640
+export const DEFAULT_DRAW_SIZE_H = 400
+
+/** Default stroke width, in canvas units. */
+export const DEFAULT_DRAW_WIDTH = 2
+
+/** Default and bounds for a text element's font size. */
+export const DEFAULT_DRAW_TEXT_SIZE = 16
+export const MIN_DRAW_TEXT_SIZE = 8
+export const MAX_DRAW_TEXT_SIZE = 64
+
+/** Coordinate magnitude ceiling: larger is a mistake, not a drawing. */
+export const MAX_DRAW_COORD = 4000
+
+/** Tape element bounds: a strip of washi tape, not a banner. */
+export const MIN_DRAW_TAPE_W = 8
+export const MAX_DRAW_TAPE_W = 400
+export const DEFAULT_DRAW_TAPE_H = 26
+export const MIN_DRAW_TAPE_H = 8
+export const MAX_DRAW_TAPE_H = 120
+export const DEFAULT_DRAW_TAPE_ANGLE = -6
+export const MIN_DRAW_TAPE_ANGLE = -45
+export const MAX_DRAW_TAPE_ANGLE = 45
+
+/** Pixel-art block bounds: characters, not rectangles, are what the model authors. */
+export const MIN_PIXEL_CELL = 2
+export const MAX_PIXEL_CELL = 48
+export const DEFAULT_PIXEL_CELL = 12
+export const MAX_PIXEL_ROWS = 120
+export const MAX_PIXEL_COLS = 200
+export const MAX_PIXEL_CELLS = 8000
+export const MAX_PIXEL_PALETTE = 16
+
+/** The pen set, named after a note app's physical pens. */
+export const DRAW_PENS = ['ball', 'fountain', 'marker', 'pencil', 'calligraphy', 'brush', 'highlighter'] as const
+
+/** A pen choice for a path element; `ball` when omitted. */
+export type DrawPen = typeof DRAW_PENS[number]
+
+/** Paper backgrounds the renderer can tile. */
+export const DRAW_PAPERS = ['plain', 'dots', 'grid', 'lined'] as const
+
+/** Background choice for a drawing; `plain` when omitted. */
+export type DrawPaper = typeof DRAW_PAPERS[number]
+
+/** Stroke rhythm for a shape outline. */
+export const DRAW_DASHES = ['solid', 'dashed', 'dotted'] as const
+
+/** Dash choice for a shape; `solid` when omitted. */
+export type DrawDash = typeof DRAW_DASHES[number]
+
+/** Geometric primitives a shape element can draw. */
+export const DRAW_SHAPES = ['rect', 'ellipse', 'line', 'arrow', 'triangle', 'diamond'] as const
+
+/** The primitive a shape element draws. */
+export type DrawShapeKind = typeof DRAW_SHAPES[number]
+
+/** Horizontal alignment of a text element around its x. */
+export const DRAW_ANCHORS = ['start', 'middle', 'end'] as const
+
+/** Anchor choice for a text element; `start` when omitted. */
+export type DrawTextAnchor = typeof DRAW_ANCHORS[number]
+
+/**
+ * Named palette, tuned to stay legible on both card themes. A color field
+ * accepts one of these names or `#rgb` / `#rrggbb`; omitting it picks the
+ * theme's ink.
+ */
+export const DRAW_COLORS = {
+  black: '#1f1f1f',
+  gray: '#8a8f98',
+  red: '#c5221f',
+  orange: '#e8710a',
+  yellow: '#f9ab00',
+  green: '#188038',
+  teal: '#0f9b8e',
+  cyan: '#0aa3c2',
+  blue: '#378add',
+  purple: '#8430ce',
+  pink: '#e64980',
+  brown: '#8d6e63',
+  white: '#ffffff',
+} as const
+
+/** One freehand stroke: a path in the SVG mini-grammar, drawn with one pen. */
+export interface DrawPathElement {
+  readonly type: 'path'
+  /** Centerline in the {@link parseDrawPathData} grammar; the pen adds the character. */
+  readonly d: string
+  readonly pen: DrawPen
+  readonly color: string | undefined
+  readonly width: number
+  /**
+   * Fill color for the closed subpaths of `d`, or undefined for a line only.
+   *
+   * Without it a closed outline is an outline forever: hills, roofs and lakes can
+   * only ever be bare triangles, which is why a `path` could not carry flat
+   * color. Filled subpaths are painted first and the stroke goes on top.
+   */
+  readonly fill?: string
+  /**
+   * Opacity of {@link DrawPathElement.fill}; 1 when unset.
+   *
+   * Organic masses need translucent washes just as much as geometric ones do.
+   * Before this field existed a translucent hill had to be a `shape` triangle
+   * or ellipse, which is how a landscape turned into an icon.
+   */
+  readonly fillOpacity?: number
+}
+
+/** One geometric primitive, optionally wobbled to look hand-drawn. */
+export interface DrawShapeElement {
+  readonly type: 'shape'
+  readonly shape: DrawShapeKind
+  readonly x: number
+  readonly y: number
+  /** For `line` and `arrow` this is the offset to the far endpoint, so it may be negative. */
+  readonly w: number
+  readonly h: number
+  readonly color: string | undefined
+  /** Fill color, or undefined to draw the outline only. */
+  readonly fill: string | undefined
+  /**
+   * Opacity of {@link DrawShapeElement.fill}; 0.25 when unset.
+   *
+   * The default is a wash so a background band cannot erase what was drawn
+   * before it. Raise it to 1 for a solid block of color -- which is what a sky
+   * band or a lake needs, and what a model means by "fill this with blue".
+   */
+  readonly fillOpacity?: number
+  readonly width: number
+  readonly dash: DrawDash
+  /** `arrow` only: also draw a head at the start endpoint. */
+  readonly arrowStart: boolean
+  /** Resolved hand-drawn wobble: the element's own choice, else the payload's. */
+  readonly rough: boolean
+}
+
+/** One line of text (newlines allowed), placed by baseline start point. */
+export interface DrawTextElement {
+  readonly type: 'text'
+  readonly x: number
+  readonly y: number
+  readonly text: string
+  readonly size: number
+  readonly color: string | undefined
+  readonly bold: boolean
+  readonly anchor: DrawTextAnchor
+  /** Use the handwriting font stack instead of the UI font. */
+  readonly hand: boolean
+}
+
+/** One strip of translucent washi tape, rotated slightly, for decoration. */
+export interface DrawTapeElement {
+  readonly type: 'tape'
+  readonly x: number
+  readonly y: number
+  readonly w: number
+  readonly h: number
+  readonly color: string | undefined
+  readonly angle: number
+}
+
+/**
+ * One compact pixel-art block: ASCII rows whose characters map to colors.
+ *
+ * A picture made of squares is the one drawing a language model authors
+ * naturally -- far cheaper than hundreds of `shape` elements, and it replaces
+ * the emoji-table that a chat model otherwise falls back to. A character the
+ * palette does not name is transparent, so ragged rows need no padding.
+ */
+export interface DrawPixelElement {
+  readonly type: 'pixels'
+  readonly x: number
+  readonly y: number
+  /** Square edge length in canvas units. */
+  readonly cell: number
+  /** One string per row, top to bottom. */
+  readonly rows: readonly string[]
+  /** Character to color; a space is always transparent. */
+  readonly palette: Readonly<Record<string, string>>
+}
+
+/** Every element a drawing can hold. */
+export type DrawElement = DrawPathElement | DrawShapeElement | DrawTextElement | DrawTapeElement | DrawPixelElement
+
+/** Parsed {@link DRAW_KIND} payload: canvas, paper, and elements with defaults applied. */
+export interface DrawPayload {
+  readonly size: { readonly w: number; readonly h: number }
+  readonly paper: DrawPaper
+  readonly rough: boolean
+  readonly elements: readonly DrawElement[]
+}
 
 /**
  * One declarative card. The envelope is versioned and self-describing; the
@@ -148,6 +379,31 @@ function isTableCell(value: unknown): value is TableCell {
 /** Narrow one unknown value to a {@link FlowchartShape}. */
 function isFlowchartShape(value: unknown): value is FlowchartShape {
   return typeof value === 'string' && (FLOWCHART_SHAPES as readonly string[]).includes(value)
+}
+
+/** Narrow one unknown value to a {@link DrawPen}. */
+function isDrawPen(value: unknown): value is DrawPen {
+  return typeof value === 'string' && (DRAW_PENS as readonly string[]).includes(value)
+}
+
+/** Narrow one unknown value to a {@link DrawPaper}. */
+function isDrawPaper(value: unknown): value is DrawPaper {
+  return typeof value === 'string' && (DRAW_PAPERS as readonly string[]).includes(value)
+}
+
+/** Narrow one unknown value to a {@link DrawDash}. */
+function isDrawDash(value: unknown): value is DrawDash {
+  return typeof value === 'string' && (DRAW_DASHES as readonly string[]).includes(value)
+}
+
+/** Narrow one unknown value to a {@link DrawShapeKind}. */
+function isDrawShape(value: unknown): value is DrawShapeKind {
+  return typeof value === 'string' && (DRAW_SHAPES as readonly string[]).includes(value)
+}
+
+/** Narrow one unknown value to a {@link DrawTextAnchor}. */
+function isDrawAnchor(value: unknown): value is DrawTextAnchor {
+  return typeof value === 'string' && (DRAW_ANCHORS as readonly string[]).includes(value)
 }
 
 /**
@@ -368,6 +624,641 @@ function checkFlowchartPayload(
   return { ok: true, flowchart: { nodes, edges } }
 }
 
+/** Every letter that may start a path command, upper and lower case. */
+const PATH_COMMAND_LETTERS = 'MLHVCQSTAZmlhvcqstaz'
+
+/** One number token: optional sign, then an integer or decimal fraction. No exponent -- see {@link parseDrawPathData}. */
+const PATH_NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)/
+
+/**
+ * A path `d` string, normalized to the commands the drawing engine needs.
+ *
+ * `H`/`V` become `L`, `S`/`T` are reflected into `C`, `Q` is elevated to the
+ * exact equivalent cubic, relative commands become absolute, and implicit
+ * coordinate groups after `M`/`L` are expanded. Arcs keep their flags because
+ * their geometry is only decided while flattening.
+ */
+export type DrawPathCommand =
+  | { readonly cmd: 'M'; readonly x: number; readonly y: number }
+  | { readonly cmd: 'L'; readonly x: number; readonly y: number }
+  | { readonly cmd: 'C'; readonly c1x: number; readonly c1y: number; readonly c2x: number; readonly c2y: number; readonly x: number; readonly y: number }
+  | { readonly cmd: 'A'; readonly rx: number; readonly ry: number; readonly rotation: number; readonly large: boolean; readonly sweep: boolean; readonly x: number; readonly y: number }
+  | { readonly cmd: 'Z' }
+
+/** Parse result: the normalized commands, or the first refusal reason. */
+export type DrawPathParse =
+  | { readonly ok: true; readonly commands: readonly DrawPathCommand[] }
+  | { readonly ok: false; readonly error: string }
+
+/**
+ * Parse one path `d` string into absolute, normalized commands.
+ *
+ * The grammar is the SVG path mini-grammar minus what the engine does not
+ * need. Two deliberate restrictions keep it safe and the errors readable:
+ * numbers may not use exponent notation (their `e` would read as a command
+ * letter, and the error says so), and the string must start with `M`/`m` and
+ * contain at least one drawing command. Arc flags are read as single digits,
+ * so `A5 5 0 0110 10` parses exactly like its spaced form. Nothing here
+ * evaluates anything; the browser half flattens these commands into geometry.
+ * @param d - the element's `d` string.
+ * @returns the normalized commands, or the first syntax error with its position.
+ */
+export function parseDrawPathData(d: string): DrawPathParse {
+  const commands: DrawPathCommand[] = []
+  let cx = 0
+  let cy = 0
+  let sx = 0
+  let sy = 0
+  let moved = false
+  let drew = false
+  let cubicReflect: { x: number; y: number } | null = null
+  let quadReflect: { x: number; y: number } | null = null
+  let i = 0
+
+  const isSeparator = (ch: string): boolean => ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === ','
+  const atCommand = (): boolean => i < d.length && PATH_COMMAND_LETTERS.includes(d.charAt(i))
+
+  /** Read one number at the cursor, or null when the next token is not one. */
+  const readNumber = (): number | null => {
+    while (i < d.length && isSeparator(d.charAt(i))) i += 1
+    if (i >= d.length) return null
+    const match = PATH_NUMBER.exec(d.slice(i))
+    if (match === null) return null
+    i += match[0].length
+    return Number(match[0])
+  }
+
+  /** Read one arc flag digit, or null when the next token is not `0` or `1`. */
+  const readFlag = (): 0 | 1 | null => {
+    while (i < d.length && isSeparator(d.charAt(i))) i += 1
+    if (i >= d.length) return null
+    const ch = d.charAt(i)
+    if (ch !== '0' && ch !== '1') return null
+    i += 1
+    return ch === '1' ? 1 : 0
+  }
+
+  /** Collect every number until the next command letter or the end of the string. */
+  const readNumbers = (): { readonly values: number[] } | { readonly error: string } => {
+    const values: number[] = []
+    for (;;) {
+      while (i < d.length && isSeparator(d.charAt(i))) i += 1
+      if (i >= d.length || atCommand()) return { values }
+      const match = PATH_NUMBER.exec(d.slice(i))
+      if (match === null) return { error: `unexpected character "${d.charAt(i)}" at position ${i}` }
+      values.push(Number(match[0]))
+      i += match[0].length
+    }
+  }
+
+  /** Absolute point of one coordinate pair for the current command's case. */
+  const abs = (vx: number, vy: number, isRelative: boolean): { x: number; y: number } =>
+    isRelative ? { x: cx + vx, y: cy + vy } : { x: vx, y: vy }
+
+  while (i < d.length) {
+    while (i < d.length && isSeparator(d.charAt(i))) i += 1
+    if (i >= d.length) break
+    const letter = d.charAt(i)
+    if (!PATH_COMMAND_LETTERS.includes(letter)) {
+      return {
+        ok: false,
+        error: `"${letter}" at position ${i} is not a path command (allowed: M L H V C S Q T A Z; numbers cannot use exponent notation)`,
+      }
+    }
+    const position = i
+    const upper = letter.toUpperCase()
+    const relative = letter !== upper
+    i += 1
+
+    if (!moved && upper !== 'M') {
+      return { ok: false, error: `path must start with M or m (found "${letter}" at position ${position})` }
+    }
+
+    if (upper === 'Z') {
+      while (i < d.length && isSeparator(d.charAt(i))) i += 1
+      if (i < d.length && !atCommand()) {
+        return { ok: false, error: `Z at position ${position} takes no arguments` }
+      }
+      commands.push({ cmd: 'Z' })
+      cx = sx
+      cy = sy
+      drew = true
+      cubicReflect = null
+      quadReflect = null
+      continue
+    }
+
+    if (upper === 'M' || upper === 'L' || upper === 'T') {
+      const read = readNumbers()
+      if ('error' in read) return { ok: false, error: read.error }
+      if (read.values.length === 0 || read.values.length % 2 !== 0) {
+        return { ok: false, error: `"${letter}" at position ${position} needs pairs of coordinates` }
+      }
+      for (let k = 0; k < read.values.length; k += 2) {
+        const end = abs(read.values[k]!, read.values[k + 1]!, relative)
+        if (upper === 'M' && k === 0) {
+          commands.push({ cmd: 'M', x: end.x, y: end.y })
+          moved = true
+          sx = end.x
+          sy = end.y
+        } else if (upper === 'T') {
+          const prev: { x: number; y: number } = quadReflect ?? { x: cx, y: cy }
+          const control: { x: number; y: number } = { x: 2 * cx - prev.x, y: 2 * cy - prev.y }
+          commands.push({
+            cmd: 'C',
+            c1x: cx + (2 / 3) * (control.x - cx),
+            c1y: cy + (2 / 3) * (control.y - cy),
+            c2x: end.x + (2 / 3) * (control.x - end.x),
+            c2y: end.y + (2 / 3) * (control.y - end.y),
+            x: end.x,
+            y: end.y,
+          })
+          quadReflect = control
+          drew = true
+        } else {
+          commands.push({ cmd: 'L', x: end.x, y: end.y })
+          drew = true
+        }
+        cx = end.x
+        cy = end.y
+      }
+      if (upper !== 'T') {
+        cubicReflect = null
+        quadReflect = null
+      } else {
+        cubicReflect = null
+      }
+      continue
+    }
+
+    if (upper === 'H' || upper === 'V') {
+      const read = readNumbers()
+      if ('error' in read) return { ok: false, error: read.error }
+      if (read.values.length === 0) {
+        return { ok: false, error: `"${letter}" at position ${position} needs at least one coordinate` }
+      }
+      for (const value of read.values) {
+        const end = upper === 'H' ? abs(value, 0, relative) : abs(0, value, relative)
+        commands.push({ cmd: 'L', x: upper === 'H' ? end.x : cx, y: upper === 'H' ? cy : end.y })
+        cx = upper === 'H' ? end.x : cx
+        cy = upper === 'H' ? cy : end.y
+        drew = true
+      }
+      cubicReflect = null
+      quadReflect = null
+      continue
+    }
+
+    if (upper === 'C' || upper === 'S' || upper === 'Q') {
+      const arity = upper === 'C' ? 6 : 4
+      const read = readNumbers()
+      if ('error' in read) return { ok: false, error: read.error }
+      if (read.values.length === 0 || read.values.length % arity !== 0) {
+        return {
+          ok: false,
+          error: `"${letter}" at position ${position} needs ${arity === 6 ? 'six' : 'four'} numbers per segment`,
+        }
+      }
+      for (let k = 0; k < read.values.length; k += arity) {
+        const v = read.values
+        if (upper === 'C') {
+          const c1 = abs(v[k]!, v[k + 1]!, relative)
+          const c2 = abs(v[k + 2]!, v[k + 3]!, relative)
+          const end = abs(v[k + 4]!, v[k + 5]!, relative)
+          commands.push({ cmd: 'C', c1x: c1.x, c1y: c1.y, c2x: c2.x, c2y: c2.y, x: end.x, y: end.y })
+          cubicReflect = c2
+        } else if (upper === 'S') {
+          const prev = cubicReflect ?? { x: cx, y: cy }
+          const c1 = { x: 2 * cx - prev.x, y: 2 * cy - prev.y }
+          const c2 = abs(v[k]!, v[k + 1]!, relative)
+          const end = abs(v[k + 2]!, v[k + 3]!, relative)
+          commands.push({ cmd: 'C', c1x: c1.x, c1y: c1.y, c2x: c2.x, c2y: c2.y, x: end.x, y: end.y })
+          cubicReflect = c2
+        } else {
+          const control = abs(v[k]!, v[k + 1]!, relative)
+          const end = abs(v[k + 2]!, v[k + 3]!, relative)
+          commands.push({
+            cmd: 'C',
+            c1x: cx + (2 / 3) * (control.x - cx),
+            c1y: cy + (2 / 3) * (control.y - cy),
+            c2x: end.x + (2 / 3) * (control.x - end.x),
+            c2y: end.y + (2 / 3) * (control.y - end.y),
+            x: end.x,
+            y: end.y,
+          })
+          quadReflect = control
+        }
+        const end = commands[commands.length - 1]!
+        if (end.cmd === 'C') {
+          cx = end.x
+          cy = end.y
+        }
+        drew = true
+      }
+      if (upper === 'C' || upper === 'S') quadReflect = null
+      if (upper === 'Q') cubicReflect = null
+      continue
+    }
+
+    // The only remaining command letter is A.
+    let arcs = 0
+    for (;;) {
+      while (i < d.length && isSeparator(d.charAt(i))) i += 1
+      if (i >= d.length || atCommand()) break
+      const rx = readNumber()
+      const ry = rx === null ? null : readNumber()
+      const rotation = ry === null ? null : readNumber()
+      const large = rotation === null ? null : readFlag()
+      const sweep = large === null ? null : readFlag()
+      const x = sweep === null ? null : readNumber()
+      const y = x === null ? null : readNumber()
+      if (y === null) {
+        return { ok: false, error: `"${letter}" at position ${position} needs 7 arguments per arc (rx ry rotation large-arc sweep x y)` }
+      }
+      if (rx! < 0 || ry! < 0) {
+        return { ok: false, error: `arc radii at position ${position} must be zero or positive` }
+      }
+      const end = abs(x!, y!, relative)
+      commands.push({ cmd: 'A', rx: rx!, ry: ry!, rotation: rotation!, large: large === 1, sweep: sweep === 1, x: end.x, y: end.y })
+      cx = end.x
+      cy = end.y
+      cubicReflect = null
+      quadReflect = null
+      drew = true
+      arcs += 1
+    }
+    if (arcs === 0) {
+      return { ok: false, error: `"${letter}" at position ${position} needs 7 arguments per arc (rx ry rotation large-arc sweep x y)` }
+    }
+  }
+
+  if (!moved) return { ok: false, error: 'path must start with M or m' }
+  if (!drew) return { ok: false, error: 'path needs at least one drawing command (L, H, V, C, S, Q, T, A or Z) after M' }
+  return { ok: true, commands }
+}
+
+/** Hex color forms a draw color field accepts. */
+const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
+
+/** Outcome of one color field check: admitted (possibly undefined), or the reason. */
+type DrawColorCheck =
+  | { readonly ok: true; readonly color: string | undefined }
+  | { readonly ok: false; readonly error: string }
+
+/**
+ * Check one color field: absent (theme ink), a palette name, or `#rgb`/`#rrggbb`.
+ * @param value - the raw field value.
+ * @param at - element prefix for the refusal message, such as `element 3`.
+ * @param field - field name for the refusal message.
+ */
+function checkDrawColor(value: unknown, at: string, field: string): DrawColorCheck {
+  if (value === undefined || value === null) return { ok: true, color: undefined }
+  if (typeof value !== 'string') return { ok: false, error: `${at}: ${field} must be a color name or #rrggbb` }
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return { ok: true, color: undefined }
+  if (HEX_COLOR_PATTERN.test(trimmed)) return { ok: true, color: trimmed }
+  if (Object.prototype.hasOwnProperty.call(DRAW_COLORS, trimmed)) return { ok: true, color: trimmed }
+  return {
+    ok: false,
+    error: `${at}: ${field} must be one of the named colors (${Object.keys(DRAW_COLORS).join(', ')}) or #rgb/#rrggbb`,
+  }
+}
+
+/**
+ * Resolve a validated color to a paint value the browser can apply: theme ink
+ * for undefined, the palette hex for a name, and the hex as given.
+ * @param color - a color that passed {@link checkDrawColor}.
+ * @returns the CSS paint value.
+ */
+export function resolveDrawColor(color: string | undefined): string {
+  if (color === undefined) return 'var(--dsw-alias-text-primary, #1f1f1f)'
+  const named: string | undefined = (DRAW_COLORS as Record<string, string | undefined>)[color]
+  return named ?? color
+}
+
+/**
+ * Check a {@link DRAW_KIND} payload with a reason.
+ *
+ * The rules that make the sketch drawable are enforced here rather than in the
+ * renderer: every element is a known type with finite in-range coordinates, and
+ * every path parses under the grammar. Refusing at the Host means the model
+ * gets a correctable error instead of a card that silently drops a stroke.
+ * @param payload - candidate payload.
+ * @returns the normalized drawing or the first refusal reason.
+ */
+function checkDrawPayload(
+  payload: unknown,
+): { readonly ok: true; readonly draw: DrawPayload } | { readonly ok: false; readonly error: string } {
+  if (!isPlainObject(payload)) return { ok: false, error: 'draw payload must be a JSON object' }
+
+  const rawElements = payload.elements
+  if (!Array.isArray(rawElements)) return { ok: false, error: 'draw payload needs an elements array' }
+  if (rawElements.length === 0 || rawElements.length > MAX_DRAW_ELEMENTS) {
+    return { ok: false, error: `draw payload needs 1..${MAX_DRAW_ELEMENTS} elements` }
+  }
+
+  let sizeW = DEFAULT_DRAW_SIZE_W
+  let sizeH = DEFAULT_DRAW_SIZE_H
+  const rawSize = payload.size
+  if (rawSize !== undefined && rawSize !== null) {
+    if (!isPlainObject(rawSize)) return { ok: false, error: 'draw size must be an object like { w, h }' }
+    if (rawSize.w !== undefined && rawSize.w !== null) {
+      if (typeof rawSize.w !== 'number' || !Number.isFinite(rawSize.w)) {
+        return { ok: false, error: `draw size w must be a number between ${MIN_DRAW_SIZE_W} and ${MAX_DRAW_SIZE_W}` }
+      }
+      if (rawSize.w < MIN_DRAW_SIZE_W || rawSize.w > MAX_DRAW_SIZE_W) {
+        return { ok: false, error: `draw size w must be between ${MIN_DRAW_SIZE_W} and ${MAX_DRAW_SIZE_W}` }
+      }
+      sizeW = rawSize.w
+    }
+    if (rawSize.h !== undefined && rawSize.h !== null) {
+      if (typeof rawSize.h !== 'number' || !Number.isFinite(rawSize.h)) {
+        return { ok: false, error: `draw size h must be a number between ${MIN_DRAW_SIZE_H} and ${MAX_DRAW_SIZE_H}` }
+      }
+      if (rawSize.h < MIN_DRAW_SIZE_H || rawSize.h > MAX_DRAW_SIZE_H) {
+        return { ok: false, error: `draw size h must be between ${MIN_DRAW_SIZE_H} and ${MAX_DRAW_SIZE_H}` }
+      }
+      sizeH = rawSize.h
+    }
+  }
+
+  let paper: DrawPaper = 'plain'
+  const rawPaper = payload.paper
+  if (rawPaper !== undefined && rawPaper !== null) {
+    if (!isDrawPaper(rawPaper)) {
+      return { ok: false, error: `draw paper must be one of: ${DRAW_PAPERS.join(', ')}` }
+    }
+    paper = rawPaper
+  }
+
+  let rough = true
+  const rawRough = payload.rough
+  if (rawRough !== undefined && rawRough !== null) {
+    if (typeof rawRough !== 'boolean') return { ok: false, error: 'draw rough must be a boolean' }
+    rough = rawRough
+  }
+
+  const checkNumber = (value: unknown, at: string, field: string, min: number, max: number, fallback: number): { readonly ok: true; readonly value: number } | { readonly ok: false; readonly error: string } => {
+    if (value === undefined || value === null) return { ok: true, value: fallback }
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return { ok: false, error: `${at}: ${field} must be a number between ${min} and ${max}` }
+    }
+    if (value < min || value > max) {
+      return { ok: false, error: `${at}: ${field} must be between ${min} and ${max}` }
+    }
+    return { ok: true, value }
+  }
+
+  const elements: DrawElement[] = []
+  for (let index = 0; index < rawElements.length; index += 1) {
+    const raw = rawElements[index]
+    if (!isPlainObject(raw)) return { ok: false, error: `element ${index} must be an object` }
+    const at = `element ${index}`
+
+    if (raw.type === 'path') {
+      const d = raw.d
+      if (typeof d !== 'string' || d.trim().length === 0) {
+        return { ok: false, error: `${at}: path needs a non-empty d string` }
+      }
+      if (d.length > MAX_DRAW_PATH_LENGTH) {
+        return { ok: false, error: `${at}: path d must be at most ${MAX_DRAW_PATH_LENGTH} characters` }
+      }
+      const parsedPath = parseDrawPathData(d)
+      if (!parsedPath.ok) return { ok: false, error: `${at}: path d is not drawable -- ${parsedPath.error}` }
+
+      const pen = raw.pen === undefined || raw.pen === null ? 'ball' : raw.pen
+      if (!isDrawPen(pen)) {
+        return { ok: false, error: `${at}: pen must be one of: ${DRAW_PENS.join(', ')}` }
+      }
+      const width = checkNumber(raw.width, at, 'width', MIN_DRAW_WIDTH, MAX_DRAW_WIDTH, DEFAULT_DRAW_WIDTH)
+      if (!width.ok) return { ok: false, error: width.error }
+      const color = checkDrawColor(raw.color, at, 'color')
+      if (!color.ok) return { ok: false, error: color.error }
+      let pathFill: string | undefined
+      if (raw.fill !== undefined && raw.fill !== null && raw.fill !== 'none') {
+        const checked = checkDrawColor(raw.fill, at, 'fill')
+        if (!checked.ok) return { ok: false, error: checked.error }
+        pathFill = checked.color
+      }
+      let pathFillOpacity: number | undefined
+      if (raw.fillOpacity !== undefined && raw.fillOpacity !== null) {
+        if (typeof raw.fillOpacity !== 'number' || !Number.isFinite(raw.fillOpacity) || raw.fillOpacity < 0 || raw.fillOpacity > 1) {
+          return { ok: false, error: `${at}: fillOpacity must be a number between 0 and 1` }
+        }
+        pathFillOpacity = raw.fillOpacity
+      }
+      elements.push({
+        type: 'path', d, pen, color: color.color, width: width.value,
+        ...pathFill === undefined ? {} : { fill: pathFill },
+        ...pathFillOpacity === undefined ? {} : { fillOpacity: pathFillOpacity },
+      })
+      continue
+    }
+
+    if (raw.type === 'shape') {
+      const shape = raw.shape
+      if (!isDrawShape(shape)) {
+        return { ok: false, error: `${at}: shape must be one of: ${DRAW_SHAPES.join(', ')}` }
+      }
+      const coords: number[] = []
+      for (const field of ['x', 'y', 'w', 'h'] as const) {
+        const value = raw[field]
+        if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_DRAW_COORD) {
+          return { ok: false, error: `${at}: ${field} must be a finite number of magnitude at most ${MAX_DRAW_COORD}` }
+        }
+        coords.push(value)
+      }
+      const [x, y, w, h] = coords as [number, number, number, number]
+      if (shape !== 'line' && shape !== 'arrow') {
+        if (w < 0 || h < 0) {
+          return { ok: false, error: `${at}: ${shape} needs w ≥ 0 and h ≥ 0 (x, y is the top-left corner)` }
+        }
+      } else if (w === 0 && h === 0) {
+        return { ok: false, error: `${at}: ${shape} needs a direction (w and h cannot both be zero)` }
+      }
+      const width = checkNumber(raw.width, at, 'width', MIN_DRAW_WIDTH, MAX_DRAW_WIDTH, DEFAULT_DRAW_WIDTH)
+      if (!width.ok) return { ok: false, error: width.error }
+      const color = checkDrawColor(raw.color, at, 'color')
+      if (!color.ok) return { ok: false, error: color.error }
+      let fill: string | undefined
+      if (raw.fill !== undefined && raw.fill !== null && raw.fill !== 'none') {
+        const checked = checkDrawColor(raw.fill, at, 'fill')
+        if (!checked.ok) return { ok: false, error: checked.error }
+        fill = checked.color
+      }
+      let dash: DrawDash = 'solid'
+      if (raw.dash !== undefined && raw.dash !== null) {
+        if (!isDrawDash(raw.dash)) {
+          return { ok: false, error: `${at}: dash must be one of: ${DRAW_DASHES.join(', ')}` }
+        }
+        dash = raw.dash
+      }
+      let arrowStart = false
+      if (raw.arrowStart !== undefined && raw.arrowStart !== null) {
+        if (typeof raw.arrowStart !== 'boolean') return { ok: false, error: `${at}: arrowStart must be a boolean` }
+        arrowStart = raw.arrowStart
+      }
+      let roughElement = rough
+      if (raw.rough !== undefined && raw.rough !== null) {
+        if (typeof raw.rough !== 'boolean') return { ok: false, error: `${at}: rough must be a boolean` }
+        roughElement = raw.rough
+      }
+      let fillOpacity: number | undefined
+      if (raw.fillOpacity !== undefined && raw.fillOpacity !== null) {
+        if (typeof raw.fillOpacity !== 'number' || !Number.isFinite(raw.fillOpacity) || raw.fillOpacity < 0 || raw.fillOpacity > 1) {
+          return { ok: false, error: `${at}: fillOpacity must be a number between 0 and 1` }
+        }
+        fillOpacity = raw.fillOpacity
+      }
+      elements.push({
+        type: 'shape', shape, x, y, w, h,
+        color: color.color, fill, width: width.value, dash, arrowStart, rough: roughElement,
+        ...fillOpacity === undefined ? {} : { fillOpacity },
+      })
+      continue
+    }
+
+    if (raw.type === 'text') {
+      const text = raw.text
+      if (typeof text !== 'string' || text.trim().length === 0) {
+        return { ok: false, error: `${at}: text needs a non-empty string` }
+      }
+      if (text.length > MAX_DRAW_TEXT_LENGTH) {
+        return { ok: false, error: `${at}: text must be at most ${MAX_DRAW_TEXT_LENGTH} characters` }
+      }
+      const coords: number[] = []
+      for (const field of ['x', 'y'] as const) {
+        const value = raw[field]
+        if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_DRAW_COORD) {
+          return { ok: false, error: `${at}: ${field} must be a finite number of magnitude at most ${MAX_DRAW_COORD}` }
+        }
+        coords.push(value)
+      }
+      const size = checkNumber(raw.size, at, 'size', MIN_DRAW_TEXT_SIZE, MAX_DRAW_TEXT_SIZE, DEFAULT_DRAW_TEXT_SIZE)
+      if (!size.ok) return { ok: false, error: size.error }
+      const color = checkDrawColor(raw.color, at, 'color')
+      if (!color.ok) return { ok: false, error: color.error }
+      let anchor: DrawTextAnchor = 'start'
+      if (raw.anchor !== undefined && raw.anchor !== null) {
+        if (!isDrawAnchor(raw.anchor)) {
+          return { ok: false, error: `${at}: anchor must be one of: ${DRAW_ANCHORS.join(', ')}` }
+        }
+        anchor = raw.anchor
+      }
+      let bold = false
+      if (raw.bold !== undefined && raw.bold !== null) {
+        if (typeof raw.bold !== 'boolean') return { ok: false, error: `${at}: bold must be a boolean` }
+        bold = raw.bold
+      }
+      let hand = false
+      if (raw.hand !== undefined && raw.hand !== null) {
+        if (typeof raw.hand !== 'boolean') return { ok: false, error: `${at}: hand must be a boolean` }
+        hand = raw.hand
+      }
+      elements.push({ type: 'text', x: coords[0]!, y: coords[1]!, text, size: size.value, color: color.color, bold, anchor, hand })
+      continue
+    }
+
+    if (raw.type === 'tape') {
+      const w = checkNumber(raw.w, at, 'w', MIN_DRAW_TAPE_W, MAX_DRAW_TAPE_W, 0)
+      if (!w.ok || w.value === 0) {
+        return { ok: false, error: `${at}: tape w must be between ${MIN_DRAW_TAPE_W} and ${MAX_DRAW_TAPE_W}` }
+      }
+      const coords: number[] = []
+      for (const field of ['x', 'y'] as const) {
+        const value = raw[field]
+        if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_DRAW_COORD) {
+          return { ok: false, error: `${at}: ${field} must be a finite number of magnitude at most ${MAX_DRAW_COORD}` }
+        }
+        coords.push(value)
+      }
+      const h = checkNumber(raw.h, at, 'h', MIN_DRAW_TAPE_H, MAX_DRAW_TAPE_H, DEFAULT_DRAW_TAPE_H)
+      if (!h.ok) return { ok: false, error: h.error }
+      const angle = checkNumber(raw.angle, at, 'angle', MIN_DRAW_TAPE_ANGLE, MAX_DRAW_TAPE_ANGLE, DEFAULT_DRAW_TAPE_ANGLE)
+      if (!angle.ok) return { ok: false, error: angle.error }
+      const color = checkDrawColor(raw.color, at, 'color')
+      if (!color.ok) return { ok: false, error: color.error }
+      elements.push({ type: 'tape', x: coords[0]!, y: coords[1]!, w: w.value, h: h.value, color: color.color, angle: angle.value })
+      continue
+    }
+
+    if (raw.type === 'pixels') {
+      const coords: number[] = []
+      for (const field of ['x', 'y'] as const) {
+        const value = raw[field]
+        if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_DRAW_COORD) {
+          return { ok: false, error: `${at}: ${field} must be a finite number of magnitude at most ${MAX_DRAW_COORD}` }
+        }
+        coords.push(value)
+      }
+      const cell = checkNumber(raw.cell, at, 'cell', MIN_PIXEL_CELL, MAX_PIXEL_CELL, DEFAULT_PIXEL_CELL)
+      if (!cell.ok) return { ok: false, error: cell.error }
+
+      const rawRows = raw.rows
+      if (!Array.isArray(rawRows) || rawRows.length === 0 || rawRows.length > MAX_PIXEL_ROWS) {
+        return { ok: false, error: `${at}: pixels needs 1..${MAX_PIXEL_ROWS} rows` }
+      }
+      const rows: string[] = []
+      for (const row of rawRows) {
+        if (typeof row !== 'string' || row.length === 0 || row.length > MAX_PIXEL_COLS) {
+          return { ok: false, error: `${at}: every pixel row must be a non-empty string of at most ${MAX_PIXEL_COLS} characters` }
+        }
+        rows.push(row)
+      }
+
+      const rawPalette = raw.palette
+      if (!isPlainObject(rawPalette)) {
+        return { ok: false, error: `${at}: pixels needs a palette object mapping characters to colors` }
+      }
+      const paletteKeys = Object.keys(rawPalette)
+      if (paletteKeys.length === 0 || paletteKeys.length > MAX_PIXEL_PALETTE) {
+        return { ok: false, error: `${at}: palette needs 1..${MAX_PIXEL_PALETTE} entries` }
+      }
+      const palette: Record<string, string> = {}
+      for (const key of paletteKeys) {
+        if (key.length !== 1 || key === ' ') {
+          return { ok: false, error: `${at}: palette keys must be single characters (a space is always transparent)` }
+        }
+        const checkedColor = checkDrawColor(rawPalette[key], at, `palette["${key}"]`)
+        if (!checkedColor.ok) return { ok: false, error: checkedColor.error }
+        if (checkedColor.color === undefined) {
+          return { ok: false, error: `${at}: palette["${key}"] needs a color` }
+        }
+        palette[key] = checkedColor.color
+      }
+
+      let painted = 0
+      for (const row of rows) {
+        for (const character of row) {
+          if (palette[character] !== undefined) painted += 1
+        }
+      }
+      if (painted === 0) {
+        return { ok: false, error: `${at}: no character in the rows matches the palette, so nothing would be drawn` }
+      }
+      if (painted > MAX_PIXEL_CELLS) {
+        return { ok: false, error: `${at}: pixels paints ${painted} cells, above the ${MAX_PIXEL_CELLS} ceiling` }
+      }
+      elements.push({ type: 'pixels', x: coords[0]!, y: coords[1]!, cell: cell.value, rows, palette })
+      continue
+    }
+
+    return { ok: false, error: `${at}: type must be one of: path, shape, text, tape, pixels` }
+  }
+
+  return { ok: true, draw: { size: { w: sizeW, h: sizeH }, paper, rough, elements } }
+}
+
+/**
+ * Parse a {@link DRAW_KIND} payload.
+ * @param payload - candidate payload.
+ * @returns the normalized drawing, or null when the payload is not one.
+ */
+export function parseDrawPayload(payload: unknown): DrawPayload | null {
+  const checked = checkDrawPayload(payload)
+  return checked.ok ? checked.draw : null
+}
+
 /**
  * Validate the Tool's raw arguments: the shared envelope plus, for a
  * {@link TABLE_KIND} or {@link FLOWCHART_KIND} card, the payload shape itself.
@@ -386,6 +1277,14 @@ export function validateCardArgs(value: unknown): CardValidation {
   if (result.card.kind === FLOWCHART_KIND) {
     const flowchart = checkFlowchartPayload(result.card.payload)
     if (!flowchart.ok) return { ok: false, error: flowchart.error }
+  }
+  if (result.card.kind === DRAW_KIND) {
+    const draw = checkDrawPayload(result.card.payload)
+    if (!draw.ok) return { ok: false, error: draw.error }
+  }
+  if (result.card.kind === FIGURE_KIND) {
+    const figure = checkFigurePayload(result.card.payload)
+    if (!figure.ok) return { ok: false, error: figure.error }
   }
   return result
 }
@@ -415,7 +1314,52 @@ export function summarizeCard(card: CardSpec): string {
       return `Showed a "flowchart" card${title}: ${flowchart.nodes.length} node(s), ${flowchart.edges.length} connection(s).`
     }
   }
+  if (card.kind === DRAW_KIND) {
+    const draw = parseDrawPayload(card.payload)
+    if (draw !== null) {
+      return `Showed a "draw" card${title}: ${draw.elements.length} element(s) on ${draw.size.w}x${draw.size.h} ${draw.paper} paper.`
+    }
+  }
+  if (card.kind === FIGURE_KIND) {
+    const figure = parseFigurePayload(card.payload)
+    if (figure !== null) {
+      return `Showed a "figure" card${title}: ${summarizeFigure(figure)}.`
+    }
+  }
   const keys = Object.keys(card.payload)
   const shape = keys.length === 0 ? 'no payload keys' : `payload keys: ${keys.slice(0, 8).join(', ')}`
   return `Showed a "${card.kind}" card${title} (${shape}).`
 }
+
+/**
+ * The `draw` geometry kernel.
+ *
+ * It lives here, not in the browser half, because both halves need the identical
+ * answer: the browser paints it, and the Host rasterizes the very same ink so the
+ * model can look at what it drew. One implementation is what makes the preview
+ * an honest picture of the card instead of a second, drifting drawing.
+ */
+export * from './draw-engine.ts'
+
+/**
+ * The renderer-neutral display list and its standalone SVG serialization.
+ *
+ * The Host rasterizes this list into the preview image a model reads back, and
+ * the same list is what the browser's ink corresponds to; exporting it from the
+ * kernel is what keeps those two one picture.
+ */
+export * from './draw-render.ts'
+
+/**
+ * The self-check: what a model cannot see about the picture it just authored.
+ *
+ * Deliberately taste-free -- extents, coverage, balance, palette size and
+ * palette-independent faults are geometry, and geometry is checkable.
+ */
+export * from './draw-diagnostics.ts'
+
+/**
+ * Semantic teaching-figure templates and validation. The figure renderer lives
+ * in the client half; the model never supplies geometry.
+ */
+export * from './figure.ts'

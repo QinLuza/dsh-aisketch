@@ -74,6 +74,10 @@ describe('registration', () => {
     const prompt = renderPrompt(await ctx.systemPrompt.assemble({}))
     expect(prompt).toContain('show_card')
     expect(prompt).toContain('never write HTML')
+    expect(prompt).toContain('illustration')
+    expect(prompt).toContain('figure')
+    expect(prompt).toContain('draft:true')
+    expect(prompt).not.toContain('add 1-3 short labels')
   })
 })
 
@@ -161,6 +165,118 @@ describe('showing a flowchart card', () => {
     const schema = schemas.find((candidate) => candidate.name === 'show_card')
     expect(JSON.stringify(schema)).toContain('flowchart')
     expect(JSON.stringify(schema)).toContain('Never send coordinates or SVG')
+  })
+})
+
+describe('drawing a finished picture', () => {
+  /** A small organic scene: no title, labels or tape, but real path washes. */
+  const sketch = {
+    kind: 'draw',
+    title: '山坡',
+    payload: {
+      size: { w: 1200, h: 800 },
+      paper: 'plain',
+      elements: [
+        {
+          type: 'path',
+          pen: 'fountain',
+          color: '#4c6b3c',
+          fill: '#9bb47a',
+          fillOpacity: 0.35,
+          d: 'M 100 620 C 260 520 360 600 520 540 C 620 500 720 560 820 520 L 820 720 L 100 720 Z',
+        },
+        { type: 'path', pen: 'pencil', color: '#5b7248', d: 'M 120 660 C 300 620 500 650 760 620' },
+      ],
+    },
+  }
+
+  it('returns a structural self-check without prescribing field-note labels', async () => {
+    const result = await ctx.tools.execute(call('show_card', sketch))
+    expect(result.isError).toBeFalsy()
+    expect(result.value).toMatchObject({ card: { kind: 'draw', title: '山坡' } })
+    const check = String((result.value as { selfCheck?: unknown }).selfCheck ?? '')
+    expect(check).toContain('<self-check>')
+    expect(check).not.toContain('add 1-3 short labels')
+    expect(check).not.toContain('field-notebook')
+  })
+
+  it('marks a draft as private in the self-check', async () => {
+    const result = await ctx.tools.execute(call('show_card', { ...sketch, draft: true }))
+    expect(result.isError).toBeFalsy()
+    expect(result.value).toMatchObject({ card: { kind: 'draw' } })
+    expect(String((result.value as { selfCheck?: unknown }).selfCheck ?? '')).toContain('private draft')
+  })
+
+  it('exposes the one-shot delivery switch to the model', () => {
+    const schema = ctx.tools.schemas().find(candidate => candidate.name === 'show_card')
+    expect(JSON.stringify(schema)).toContain('draft')
+    expect(JSON.stringify(schema)).toContain('no card is shown to the user')
+  })
+})
+
+describe('showing a teaching figure', () => {
+  it('admits an incline figure and summarizes its semantics', async () => {
+    const result = await ctx.tools.execute(call('show_card', {
+      kind: 'figure',
+      title: '斜面受力',
+      payload: { template: 'incline_force', params: { angleDeg: 30, massKg: 2, frictionCoeff: 0.5 } },
+    }))
+    expect(result.isError).toBeFalsy()
+    expect(result.value).toMatchObject({ card: { kind: 'figure', title: '斜面受力' } })
+    expect(textOf(result.content)).toContain('incline_force')
+    expect(textOf(result.content)).toContain('θ=30°')
+    expect(textOf(result.content)).toContain('m=2 kg')
+  })
+
+  it('admits a connected table-pulley figure with semantic forces', async () => {
+    const result = await ctx.tools.execute(call('show_card', {
+      kind: 'figure',
+      payload: { template: 'connected_bodies', params: { surfaceMassKg: 2, hangingMassKg: 1.5, frictionCoeff: 0.3 } },
+    }))
+    expect(result.isError).toBeFalsy()
+    expect(result.value).toMatchObject({ card: { kind: 'figure' } })
+    expect(textOf(result.content)).toContain('connected_bodies')
+    expect(textOf(result.content)).toContain('m₁=2 kg')
+  })
+
+  it('admits an orbital diagram whose configuration is derived from the element', async () => {
+    const result = await ctx.tools.execute(call('show_card', {
+      kind: 'figure',
+      payload: { template: 'orbital_diagram', params: { symbol: 'Zn' } },
+    }))
+    expect(result.isError).toBeFalsy()
+    expect(result.value).toMatchObject({ card: { kind: 'figure' } })
+    expect(textOf(result.content)).toContain('orbital_diagram: Zn (Z=30)')
+  })
+
+  it('admits an atom figure whose electrons are derived from the element', async () => {
+    const result = await ctx.tools.execute(call('show_card', {
+      kind: 'figure',
+      payload: { template: 'atom_shell', params: { symbol: 'Na' } },
+    }))
+    expect(result.isError).toBeFalsy()
+    expect(result.value).toMatchObject({ card: { kind: 'figure' } })
+    expect(textOf(result.content)).toContain('Na, Z=11, shells 2,8,1')
+  })
+
+  it('refuses a physically unreadable angle so the model can correct it', async () => {
+    const result = await ctx.tools.execute(call('show_card', {
+      kind: 'figure',
+      payload: { template: 'incline_force', params: { angleDeg: 90, massKg: 2, frictionCoeff: 0.5 } },
+    }))
+    expect(result.isError).toBe(true)
+    expect(textOf(result.content)).toContain('angleDeg')
+  })
+
+  it('exposes both templates and the draw/figure routing rule', () => {
+    const schema = ctx.tools.schemas().find(candidate => candidate.name === 'show_card')
+    const serialized = JSON.stringify(schema)
+    expect(serialized).toContain('incline_force')
+    expect(serialized).toContain('connected_bodies')
+    expect(serialized).toContain('orbital_diagram')
+    expect(serialized).toContain('atom_shell')
+    expect(serialized).toContain('never for freehand')
+    expect(serialized).toContain('figure')
   })
 })
 

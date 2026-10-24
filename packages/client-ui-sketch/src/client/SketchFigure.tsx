@@ -6,7 +6,7 @@
  * carries the same plot as an artifact of the answer. Keeping one implementation
  * is what stops the two from disagreeing about what a spec draws.
  *
- * Geometry comes from `@gk/sketch-core`, the module the Host tool used, so the
+ * Geometry comes from `@aisketch/sketch-core`, the module the Host tool used, so the
  * picture is derived rather than transported: no live Host call, and a replayed
  * session renders the identical plot.
  *
@@ -18,8 +18,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
-import { build, normalizeMode, resolveGeometry } from '@gk/sketch-core'
-import type { CompiledFn, Mode, SketchSpec } from '@gk/sketch-core'
+import { createPortal } from 'react-dom'
+import { normalizeMode, resolveGeometry } from '@aisketch/sketch-core'
+import type { Mode, SketchSpec } from '@aisketch/sketch-core'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   COLORS,
@@ -36,7 +37,7 @@ import type { ChartType, Sample, Series } from './render.ts'
 import { NS } from './locales.ts'
 import type { SketchKey } from './locales.ts'
 import { CLS, ensureStyles } from './styles.ts'
-import { freezeWindow, initialValues, stepOf, withValues } from './params.ts'
+import { compileCurves, freezeWindow, initialValues, stepOf, withValues } from './params.ts'
 import type { ParamValues } from './params.ts'
 import { formatReadout, pickReadout } from './readout.ts'
 import type { ReadoutCurve } from './readout.ts'
@@ -48,6 +49,10 @@ ensureStyles()
 /** Card geometry in CSS pixels; the canvas backs itself at device resolution. */
 const WIDTH = 620
 const HEIGHT = 380
+
+/** The expanded overlay draws at this size, so a dense curve stays readable. */
+const EXPANDED_WIDTH = 1000
+const EXPANDED_HEIGHT = 600
 
 /** Parameter sweep: how long one animation frame advances the value. */
 const SWEEP_STEP = 0.06
@@ -170,24 +175,36 @@ function modeLabel(mode: Mode, t: (key: SketchKey) => string): string {
 }
 
 /** Cursor position in canvas pixels, corrected for a card scaled below its design width. */
-function canvasOffset(element: HTMLCanvasElement, clientX: number, clientY: number): { px: number; py: number } {
+function canvasOffset(element: HTMLCanvasElement, clientX: number, clientY: number, width: number, height: number): { px: number; py: number } {
   const rect = element.getBoundingClientRect()
   return {
-    px: ((clientX - rect.left) * WIDTH) / rect.width,
-    py: ((clientY - rect.top) * HEIGHT) / rect.height,
+    px: ((clientX - rect.left) * width) / rect.width,
+    py: ((clientY - rect.top) * height) / rect.height,
   }
 }
 
 /** A spec plus the localized copy seat. */
 export type SketchFigureProps = { readonly spec: SketchSpec } & PropsLocale<typeof NS>
 
+/** One plot surface: the head row, the Canvas with its readout tracer, and the sliders. */
+interface SketchPlotProps extends SketchFigureProps {
+  /** Canvas width in CSS pixels. */
+  readonly width: number
+  /** Canvas height in CSS pixels. */
+  readonly height: number
+  /** Show the expand control; absent on the overlay's own plot. */
+  readonly onExpand?: (() => void) | undefined
+  /** Show the close control; only the overlay's plot has one. */
+  readonly onClose?: (() => void) | undefined
+}
+
 /**
  * Render one spec as a live plot: the head row, the Canvas with its readout
  * tracer, and one slider per declared parameter.
- * @param props - the persisted spec and the `sketch` dictionary.
+ * @param props - the persisted spec, the `sketch` dictionary, and the surface size.
  * @returns the card.
  */
-export function SketchFigure({ spec, t }: SketchFigureProps) {
+function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotProps) {
   const canvas = useRef<HTMLCanvasElement | null>(null)
 
   // Interaction state is local by decision: the spec keeps the declared values,
@@ -218,18 +235,14 @@ export function SketchFigure({ spec, t }: SketchFigureProps) {
     [spec, values, frozenY],
   )
 
-  // One compile per expression, reused by every tracer move.
-  const evaluators = useMemo(() => {
-    const map = new Map<string, CompiledFn>()
-    for (const expr of [spec.expr, ...(spec.compare ?? [])]) {
-      if (!map.has(expr)) map.set(expr, build(expr).eval)
-    }
-    return map
-  }, [spec])
+  // One compile per expression, reused by every tracer move. Comparison lines
+  // carry a "label, expr" prefix, so `compileCurves` splits before compiling --
+  // compiling the raw line took the whole card down once.
+  const evaluators = useMemo(() => compileCurves(spec), [spec])
 
   const viewport = useMemo(
-    () => new Viewport(geometry.xRange[0], geometry.xRange[1], frozenY.yMin, frozenY.yMax).fit(WIDTH, HEIGHT),
-    [geometry.xRange, frozenY],
+    () => new Viewport(geometry.xRange[0], geometry.xRange[1], frozenY.yMin, frozenY.yMax).fit(width, height),
+    [geometry.xRange, frozenY, width, height],
   )
 
   // Draw whenever the geometry or the tracer moves.
@@ -237,8 +250,8 @@ export function SketchFigure({ spec, t }: SketchFigureProps) {
     const element = canvas.current
     if (element === null) return
     const ratio = Math.max(1, globalThis.devicePixelRatio ?? 1)
-    element.width = WIDTH * ratio
-    element.height = HEIGHT * ratio
+    element.width = width * ratio
+    element.height = height * ratio
     const ctx = element.getContext('2d')
     if (ctx === null) return
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
@@ -253,8 +266,7 @@ export function SketchFigure({ spec, t }: SketchFigureProps) {
     if (point !== null) {
       drawPoint(ctx, viewport, point.x, point.y, `(${formatReadout(point.x)}, ${formatReadout(point.y)})`, point.color)
     }
-  }, [spec, geometry, viewport, cursor, mode, evaluators, values])
-
+  }, [spec, geometry, viewport, cursor, mode, evaluators, values, width, height])
   // The sweep timer advances the lead parameter and writes through the same
   // state the slider reads, so the handle follows the animation.
   useEffect(() => {
@@ -284,15 +296,15 @@ export function SketchFigure({ spec, t }: SketchFigureProps) {
   const traceTo = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
     const element = canvas.current
     if (element === null) return
-    setCursor(canvasOffset(element, event.clientX, event.clientY))
-  }, [])
+    setCursor(canvasOffset(element, event.clientX, event.clientY, width, height))
+  }, [width, height])
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLCanvasElement>): void => {
-    const step = WIDTH / TRACE_KEYS
+    const step = width / TRACE_KEYS
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault()
-      const at = cursor ?? { px: WIDTH / 2, py: HEIGHT / 2 }
-      setCursor({ ...at, px: Math.min(WIDTH, Math.max(0, at.px + (event.key === 'ArrowRight' ? step : -step))) })
+      const at = cursor ?? { px: width / 2, py: height / 2 }
+      setCursor({ ...at, px: Math.min(width, Math.max(0, at.px + (event.key === 'ArrowRight' ? step : -step))) })
       return
     }
     if (event.key === 'Escape') {
@@ -306,20 +318,44 @@ export function SketchFigure({ spec, t }: SketchFigureProps) {
       <div className={CLS.head}>
         <span className={CLS.title}>{spec.expr}</span>
         <span className={CLS.chip}>{modeLabel(mode, t)}</span>
-        {lead !== undefined && (
-          <button
-            type="button"
-            className={CLS.action}
-            onClick={() => setPlaying((value) => !value)}
-          >
-            {playing ? t('card.pause') : t('card.animate')}
-          </button>
-        )}
+        <span className={CLS.actions}>
+          {lead !== undefined && (
+            <button
+              type="button"
+              className={CLS.action}
+              onClick={() => setPlaying((value) => !value)}
+            >
+              {playing ? t('card.pause') : t('card.animate')}
+            </button>
+          )}
+          {onExpand === undefined ? null : (
+            <button
+              type="button"
+              className={CLS.action}
+              onClick={onExpand}
+              aria-label={t('card.expand')}
+              title={t('card.expand')}
+            >
+              ⤢
+            </button>
+          )}
+          {onClose === undefined ? null : (
+            <button
+              type="button"
+              className={CLS.action}
+              onClick={onClose}
+              aria-label={t('card.close')}
+              title={t('card.close')}
+            >
+              ✕
+            </button>
+          )}
+        </span>
       </div>
       <canvas
         ref={canvas}
         className={CLS.canvas}
-        style={{ width: `${WIDTH}px`, height: `${HEIGHT}px` }}
+        style={{ width: `${width}px`, height: `${height}px` }}
         role="img"
         tabIndex={0}
         aria-label={spec.expr}
@@ -364,5 +400,54 @@ export function SketchFigure({ spec, t }: SketchFigureProps) {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * The plot card and its expand overlay.
+ *
+ * Expanding draws the plot again at a larger canvas instead of moving the
+ * mounted card: a portal keeps the overlay above the chat's scroll containers,
+ * and the copy starts from the declared parameter values, which is the only
+ * state the spec owns.
+ * @param props - the persisted spec and the `sketch` dictionary.
+ * @returns the card plus, once expanded, its larger copy.
+ */
+export function SketchFigure({ spec, t }: SketchFigureProps) {
+  const [expanded, setExpanded] = useState(false)
+  useEffect(() => {
+    if (!expanded) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setExpanded(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [expanded])
+  return (
+    <>
+      <SketchPlot spec={spec} t={t} width={WIDTH} height={HEIGHT} onExpand={() => setExpanded(true)} />
+      {expanded && typeof document !== 'undefined'
+        ? createPortal(
+          <div className={CLS.overlay} onClick={() => setExpanded(false)}>
+            <div
+              className={CLS.dialog}
+              role="dialog"
+              aria-modal="true"
+              aria-label={spec.expr}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <SketchPlot
+                spec={spec}
+                t={t}
+                width={EXPANDED_WIDTH}
+                height={EXPANDED_HEIGHT}
+                onClose={() => setExpanded(false)}
+              />
+            </div>
+          </div>,
+          document.body,
+        )
+        : null}
+    </>
   )
 }

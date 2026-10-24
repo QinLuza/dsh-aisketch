@@ -19,7 +19,7 @@ importers:
 
   packages/cards-tool:
     dependencies:
-      '@gk/cards-core':
+      '@aisketch/cards-core':
         specifier: workspace:*
         version: link:../cards-core
     devDependencies:
@@ -50,7 +50,7 @@ importers:
 
   packages/client-ui-cards:
     dependencies:
-      '@gk/cards-core':
+      '@aisketch/cards-core':
         specifier: workspace:*
         version: link:../cards-core
     devDependencies:
@@ -96,7 +96,7 @@ importers:
 
   packages/client-ui-sketch:
     dependencies:
-      '@gk/sketch-core':
+      '@aisketch/sketch-core':
         specifier: workspace:*
         version: link:../sketch-core
     devDependencies:
@@ -127,12 +127,18 @@ importers:
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31
+      '@types/react-dom':
+        specifier: ~18.3.1
+        version: 18.3.7(@types/react@18.3.31)
       esbuild:
         specifier: ^0.25.12
         version: 0.25.12
       react:
         specifier: ^18.2.0
         version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -142,21 +148,21 @@ importers:
 
   packages/sketch-bundle:
     dependencies:
+      '@aisketch/cards-tool':
+        specifier: workspace:*
+        version: link:../cards-tool
+      '@aisketch/client-ui-cards':
+        specifier: workspace:*
+        version: link:../client-ui-cards
+      '@aisketch/client-ui-sketch':
+        specifier: workspace:*
+        version: link:../client-ui-sketch
+      '@aisketch/sketch-tool':
+        specifier: workspace:*
+        version: link:../sketch-tool
       '@deepseek-ai/cordis':
         specifier: 4.0.4
         version: 4.0.4
-      '@gk/cards-tool':
-        specifier: workspace:*
-        version: link:../cards-tool
-      '@gk/client-ui-cards':
-        specifier: workspace:*
-        version: link:../client-ui-cards
-      '@gk/client-ui-sketch':
-        specifier: workspace:*
-        version: link:../client-ui-sketch
-      '@gk/sketch-tool':
-        specifier: workspace:*
-        version: link:../sketch-tool
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -173,7 +179,7 @@ importers:
 
   packages/sketch-tool:
     dependencies:
-      '@gk/sketch-core':
+      '@aisketch/sketch-core':
         specifier: workspace:*
         version: link:../sketch-core
     devDependencies:

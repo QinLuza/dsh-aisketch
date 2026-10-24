@@ -7,7 +7,7 @@
  * "what is y here", and a Euclidean distance would prefer a steep segment over
  * the point the cursor actually sits on.
  */
-import type { CompiledFn } from '@gk/sketch-core'
+import type { CompiledFn } from '@aisketch/sketch-core'
 import type { Viewport } from './render.ts'
 
 /** One candidate curve: its evaluator and the colour it was drawn in. */

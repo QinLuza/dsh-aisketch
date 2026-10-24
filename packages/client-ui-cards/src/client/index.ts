@@ -15,7 +15,7 @@
  * answer. A later card type -- in this plugin or in someone else's -- registers
  * a renderer and inherits all four.
  *
- * Both halves of the wire share `@gk/cards-core`: the Host admits the spec, the
+ * Both halves of the wire share `@aisketch/cards-core`: the Host admits the spec, the
  * client parses the identical shape back out of the persisted arguments.
  */
 
@@ -29,10 +29,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
-import { FLOWCHART_KIND, TABLE_KIND } from '@gk/cards-core'
+import { DRAW_KIND, FIGURE_KIND, FLOWCHART_KIND, TABLE_KIND } from '@aisketch/cards-core'
 import { CARD_NODE_KIND, cardDefinition } from './card-definition.ts'
 import { CardNode } from './CardNode.tsx'
 import { CardTail } from './CardTail.tsx'
+import { DrawCard } from './DrawCard.tsx'
+import { FigureCard } from './FigureCard.tsx'
 import { FlowchartCard } from './FlowchartCard.tsx'
 import { TableCard } from './TableCard.tsx'
 import { registerCardRenderer } from './registry.ts'
@@ -40,7 +42,7 @@ import { cardTurnDefinition } from './turn-cards.ts'
 import { en, NS, zh } from './locales.ts'
 
 /** This implementation's identity in the renderer registry. */
-export const CARD_RENDERER_ID = '@gk/client-ui-cards'
+export const CARD_RENDERER_ID = '@aisketch/client-ui-cards'
 
 /**
  * Cordis service dependencies of this plugin.
@@ -73,6 +75,19 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(
     () => registerCardRenderer(FLOWCHART_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: FlowchartCard }),
     'client-ui-cards: flowchart renderer',
+  )
+  // The third shipped kind: centerlines in, pen character out. Every pen
+  // effect is a pure function of the payload and an element seed, so the same
+  // card replays to identical pixels.
+  ctx.effect(
+    () => registerCardRenderer(DRAW_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: DrawCard }),
+    'client-ui-cards: draw renderer',
+  )
+  // The fourth shipped kind: a semantic teaching figure. The geometry is
+  // deterministic and the model never supplies coordinates.
+  ctx.effect(
+    () => registerCardRenderer(FIGURE_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: FigureCard }),
+    'client-ui-cards: figure renderer',
   )
   ctx.uiConversation.events.register(cardDefinition)
   ctx.uiConversation.events.register(cardTurnDefinition)

@@ -9,7 +9,7 @@
 
 import { useSyncExternalStore } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
-import type { CardSpec } from '@gk/cards-core'
+import type { CardSpec } from '@aisketch/cards-core'
 import { cardRenderer, cardRendererVersion, subscribeCardRenderers } from './registry.ts'
 import { RawCard } from './RawCard.tsx'
 import type { NS } from './locales.ts'

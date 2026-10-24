@@ -12,13 +12,15 @@
  *
  * The source is the persisted `tool/call` arguments -- the same bytes the `card`
  * node projects from -- so the two faces never disagree and a replayed session
- * redraws the identical cards with no Host call.
+ * redraws the identical cards with no Host call. Private drafts are accumulated
+ * with the rest but filtered out when a final card exists; the last draw draft
+ * is used only as a fallback when no final was published.
  */
 import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
-import type { CardSpec } from '@gk/cards-core'
-import { CARD_TOOL_NAME, parseCardSpec } from '@gk/cards-core'
-import { readCallArguments } from './card-definition.ts'
+import type { CardSpec } from '@aisketch/cards-core'
+import { CARD_TOOL_NAME, parseCardSpec } from '@aisketch/cards-core'
+import { isPrivateDraft, readCallArguments } from './card-definition.ts'
 
 /** One card carried by a Turn. */
 export interface CardEntry {
@@ -27,6 +29,8 @@ export interface CardEntry {
   readonly seq: number
   readonly card: CardSpec | null
   readonly raw: unknown
+  /** A private draft is collected for its preview, but never shown as an artifact. */
+  readonly draft: boolean
 }
 
 /** Immutable card facts published against one Turn. */
@@ -50,13 +54,23 @@ interface CardsTurnState {
 
 /**
  * Select the cards a completed Turn should show as artifacts.
+ *
+ * Private drafts do not appear when a final was published. If the model never
+ * committed a drawing and only left a draft, the last draw draft is used as a
+ * safety net rather than showing the user nothing. Non-draw finals keep their
+ * normal order around that fallback.
  * @param owner - closing turn and its closing sequence.
  * @returns the cards called before the closing reply, or null when there are none.
  */
 export function selectCardsTurn(owner: TurnTailOwnerProps): readonly CardEntry[] | null {
   const cards = owner.turn.data.get('card-tail')?.cards ?? []
   const closing = cards.filter(entry => entry.seq < owner.seq)
-  return closing.length === 0 ? null : closing
+  if (closing.length === 0) return null
+  const finals = closing.filter(entry => !entry.draft)
+  if (finals.some(entry => entry.card?.kind === 'draw')) return finals
+  const fallback = [...closing].reverse().find(entry => entry.draft && entry.card?.kind === 'draw')
+  if (fallback === undefined) return finals.length === 0 ? null : finals
+  return [...finals, fallback].sort((left, right) => left.seq - right.seq)
 }
 
 /** Turn-local card accumulator; it publishes no view Node. */
@@ -88,6 +102,7 @@ export const cardTurnDefinition: ConversationNodeDefinition<CardsTurnState> = {
       // Unparseable text stays visible verbatim; a parsed-but-invalid envelope
       // shows as data instead of an escaped string -- identical to the node.
       raw: call.parsed === undefined ? call.text : call.parsed,
+      draft: isPrivateDraft(call.parsed),
     }
     // A redelivered call replaces its row, so the tail never draws one twice.
     const others = context.state.cards.filter(candidate => candidate.callId !== callId)

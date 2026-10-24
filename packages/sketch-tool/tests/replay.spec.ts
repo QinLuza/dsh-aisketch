@@ -18,8 +18,8 @@ import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import { resolveGeometry } from '@gk/sketch-core'
-import type { SketchSpec } from '@gk/sketch-core'
+import { resolveGeometry } from '@aisketch/sketch-core'
+import type { SketchSpec } from '@aisketch/sketch-core'
 import * as sketchTool from '../src/index.ts'
 
 const signal = new AbortController().signal
