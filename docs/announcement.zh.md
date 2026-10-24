@@ -35,6 +35,8 @@ DSH 本体已经有「每个内置工具自己的卡片模型」（read / grep /
 
 `table`：1..12 列、≤500 行，表头吸顶、数字右对齐、空值显示 `--`。
 
+![常用物理量表](https://raw.githubusercontent.com/QinLuza/dsh-aisketch/master/docs/assets/screenshots/table-physics.png)
+
 `flowchart`：1..40 节点、≤80 连线，胶囊起止、菱形判断、分支标签、回边绕右侧 gutter、共享端点自动扇开；卡片可放大。
 
 ![流程图](https://raw.githubusercontent.com/QinLuza/dsh-aisketch/master/docs/assets/screenshots/flowchart-parity.png)
@@ -100,7 +102,7 @@ dsh --profile <profile> --dump-config
 
 这不是插件坏了，而是 **dsh 的显示逻辑**：
 
-工具调用按定义属于「回合过程」，而 dsh 的工作步骤展示有「简洁 / 标准 / 详细 / 完全展开」四档；在部分档位或版本下，过程区的卡片会被折叠或藏起来，**只有把信息展示切到「完全展开（verbose）」或展开对应回合才能看到**。本插件已经把产出物同时挂到 `turnTail`，但宿主版本与展示设置仍可能影响最终可见性。排查时请先切「完全展开」，再看卡片是否在。
+工具调用按定义属于「回合过程」，而 dsh 的工作步骤展示有「简洁 / 标准 / 详细 / 完全展开」四档；在部分档位或版本下，过程区的卡片会被折叠或藏起来，**只有把信息展示切到「完全展开（verbose）」或展开对应回合才能看到**。本插件已经把产出物同时挂到 `turnTail`，但宿主版本与展示设置仍可能影响最终可见性。排查时请先切「完全展开」，再看卡片是否在。**`table`、`flowchart`、`sketch_function`、`draw`、`figure` 都走同一条通道，表格同样适用**——表格在默认档位被折叠时，切到「完全展开」即可显示。
 
 顺带的取舍：「完全展开」档下同一张卡会出现两次（过程行 + 产出物行），目前未去重；「轨迹」页按设计只显示原始调用，看不到卡片。
 
@@ -108,19 +110,7 @@ dsh --profile <profile> --dump-config
 
 ---
 
-## 发布与社区
-
-DSH 官方目前**没有插件提交入口或审核流程**。官方 `CONTRIBUTING.md` 的建议是把 GitHub 项目关联到 **`dsh-plugin`** topic；插件市场不内置索引源，第三方索引通过「自定义索引」添加。社区事实渠道：
-
-- GitHub Topics：`dsh-plugin`、`deepseek-harness`、`dsh`；
-- `awesome-dsh-plugin` 精选列表（PR 收录）；
-- `deepseek-ai/deepseek-harness` 的 GitHub Discussions（反馈与展示）。
-
-本仓库 topics / keywords：`dsh-plugin, deepseek-harness, dsh, visualization, diagram, table, flowchart, draw, figure, function-plot, svg, agent-tools`。
-
----
-
-## 欢迎
+## 参与贡献
 
 - 注册你自己的卡片 `kind`：一个载荷解析器 + 一个渲染器 + 一组测试；
 - 用出问题请带 `show_card` 的原始参数开 issue；
