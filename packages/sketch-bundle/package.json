@@ -1,6 +1,6 @@
 {
   "name": "@aisketch/sketch-bundle",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "AISketch bundle: mounts the sketch_function tool, its browser card, and the generic show_card card channel into a dsh profile",
   "type": "module",
   "license": "MIT",
@@ -44,7 +44,8 @@
     "flowchart",
     "draw",
     "figure",
-    "visualization"
+    "visualization",
+    "bundle"
   ],
   "engines": {
     "dsh": ">=0.1.7-rc.2 <0.2.0"

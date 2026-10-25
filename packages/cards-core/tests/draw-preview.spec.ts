@@ -35,6 +35,26 @@ function caption(x: number, y: number, text = '标题'): unknown {
   return { type: 'text', x, y, text, size: 16, color: 'black' }
 }
 
+describe('canvas background', () => {
+  /** One caption on a canvas with whatever payload extras the case needs. */
+  function drawWith(extra: Record<string, unknown>) {
+    const draw = parseDrawPayload({ size: SIZE, elements: [caption(10, 20, 'x')], ...extra })
+    if (draw === null) throw new Error('test payload did not parse')
+    return draw
+  }
+
+  it('paints the payload background instead of the theme surface', () => {
+    const list = buildDrawDisplayList(drawWith({ background: '#102030' }))
+    expect(list.background).toBe('#102030')
+    expect(drawSvgMarkup(list)).toContain('fill="#102030"')
+  })
+
+  it('resolves a palette name and falls back to the theme surface when absent', () => {
+    expect(buildDrawDisplayList(drawWith({ background: 'blue' })).background).toBe('#378add')
+    expect(buildDrawDisplayList(drawWith({})).background).toBe('#ffffff')
+  })
+})
+
 describe('building the display list', () => {
   it('keeps one group per element, in paint order', () => {
     const list = listOf([rect(0, 0, 40, 30), caption(10, 60)])
@@ -86,7 +106,7 @@ describe('building the display list', () => {
 
   it('resolves theme ink to a concrete color, because an offscreen raster has no theme', () => {
     const inks = elementInks(
-      { type: 'shape', shape: 'rect', x: 0, y: 0, w: 20, h: 20, color: undefined, fill: undefined, width: 2, dash: 'solid', arrowStart: false, rough: false },
+      { type: 'shape', shape: 'rect', x: 0, y: 0, w: 20, h: 20, color: undefined, fill: undefined, width: 2, dash: 'solid', arrowStart: false, rough: false, blend: 'normal' },
       0,
     )
     for (const ink of inks) expect(ink.color).not.toContain('var(')
@@ -174,5 +194,70 @@ describe('the self-check', () => {
     expect(text).toContain('1 element(s): 1 shape')
     expect(text).toContain('</self-check>')
     expect(text.split('\n').filter(line => line.startsWith('- ')).length).toBeGreaterThan(0)
+  })
+})
+
+describe('gradient ink', () => {
+  it('carries the resolved gradient into the display list and the standalone SVG', () => {
+    const draw = parseDrawPayload({
+      size: SIZE,
+      elements: [{
+        type: 'shape', shape: 'rect', x: 0, y: 0, w: SIZE.w, h: SIZE.h,
+        color: 'red', strokeOpacity: 0,
+        fill: { type: 'linear', from: 'blue', to: 'red', angle: 180 },
+      }],
+    })
+    if (draw === null) throw new Error('test payload did not parse')
+    const list = buildDrawDisplayList(draw)
+    const polygon = list.paints.find(ink => ink.kind === 'polygon')
+    expect(polygon?.kind).toBe('polygon')
+    if (polygon?.kind !== 'polygon') return
+    expect(polygon.gradient?.type).toBe('linear')
+    expect(polygon.gradient?.stops.map(stop => stop.color)).toEqual(['#378add', '#c5221f'])
+    // A gradient states its own alpha, so the shape fill is not washed to 0.25.
+    expect(polygon.opacity).toBe(1)
+    const svg = drawSvgMarkup(list)
+    expect(svg).toContain('<linearGradient id="cdg0"')
+    expect(svg).toContain('fill="url(#cdg0)"')
+    expect(svg).toContain('stop-opacity="1"')
+  })
+})
+
+describe('blend modes in the display list', () => {
+  it('carries the element blend onto its ink and into the SVG style', () => {
+    const draw = parseDrawPayload({
+      size: SIZE,
+      elements: [{
+        type: 'shape', shape: 'rect', x: 0, y: 0, w: SIZE.w, h: SIZE.h,
+        color: 'white', strokeOpacity: 0, fill: 'orange', fillOpacity: 1, blend: 'screen',
+      }],
+    })
+    if (draw === null) throw new Error('test payload did not parse')
+    const list = buildDrawDisplayList(draw)
+    const polygon = list.paints.find(ink => ink.kind === 'polygon')
+    expect(polygon?.blend).toBe('screen')
+    expect(drawSvgMarkup(list)).toContain('style="mix-blend-mode:screen"')
+  })
+
+  it('leaves normal ink unstyled', () => {
+    const draw = parseDrawPayload({ size: SIZE, elements: [rect(0, 0, 20, 20)] })
+    if (draw === null) throw new Error('test payload did not parse')
+    expect(drawSvgMarkup(buildDrawDisplayList(draw))).not.toContain('mix-blend-mode')
+  })
+})
+
+describe('blur in the display list', () => {
+  it('carries the spread and writes half of it as the CSS stdDeviation', () => {
+    const draw = parseDrawPayload({
+      size: SIZE,
+      elements: [{
+        type: 'shape', shape: 'rect', x: 20, y: 20, w: 60, h: 40,
+        color: 'white', strokeOpacity: 0, fill: 'orange', fillOpacity: 1, blur: 20,
+      }],
+    })
+    if (draw === null) throw new Error('test payload did not parse')
+    const list = buildDrawDisplayList(draw)
+    expect(list.paints[0]?.blur).toBe(20)
+    expect(drawSvgMarkup(list)).toContain('filter:blur(10px)')
   })
 })

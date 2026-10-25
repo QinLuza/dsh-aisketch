@@ -45,6 +45,19 @@ DSH 本体已经有「每个内置工具自己的卡片模型」（read / grep /
 
 `draw`：模型只写中心线、形状、文字、胶带或像素网格；钢笔出锋、书法笔角度、荧光笔半透明、铅笔颗粒、手绘抖动全部由引擎算。支持 `draft: true` 私有草稿与最终稿，用户只看到成品。
 
+**0.3 起，光与墨也是字段**：`background` 画布底色、`strokeOpacity` 同笔浓淡、`dash` 自由曲线虚线、`fill` 的 `linear`/`radial` 渐变（CSS 角度、`from`/`to` 简写）、`blend` 混合模式、`blur` 柔边。几何仍由引擎按元素包围盒算，模型不给坐标，回放等价不变。
+
+<p>
+  <img src="https://raw.githubusercontent.com/QinLuza/dsh-aisketch/master/docs/assets/screenshots/draw-dashed-prism.png" width="49%" alt="虚线隐藏棱的三棱柱" />
+  <img src="https://raw.githubusercontent.com/QinLuza/dsh-aisketch/master/docs/assets/screenshots/draw-gradient-dusk.png" width="49%" alt="渐变天空与径向光晕" />
+</p>
+<p>
+  <img src="https://raw.githubusercontent.com/QinLuza/dsh-aisketch/master/docs/assets/screenshots/draw-light-blur.png" width="49%" alt="screen 光柱 + multiply 暗部 + blur" />
+  <img src="https://raw.githubusercontent.com/QinLuza/dsh-aisketch/master/docs/assets/screenshots/draw-scene-snapshot.png" width="49%" alt="位图快照渲染的场景" />
+</p>
+
+顺带修了一个**真的会卡死体验**的问题：一张三四百条 `path` 的手绘卡，每滚过一次、每放大一次都要重新栅格化。现在卡片先离屏拍成位图再上屏——同一张卡实测滚动从「首次中位 41ms、单帧 407ms」回到 17ms，放大从 539ms 卡顿降到约 97ms。
+
 ### 教学示意图
 
 `figure` 不塞进 `draw`：插画怕平庸，示意图怕错误。模型只填模板与语义参数，坐标、角度、锚点、标签全部由渲染器构造。
@@ -92,9 +105,9 @@ dsh --profile <profile> --dump-config
 
 ## 质量与证据
 
-- **470 例**单元/集成测试，六个包 `tsc --noEmit` 全清；两个 client 产物构建通过。
-- 真机验收不是「没报错」：函数图 canvas 像素回读；流程图截图读到胶囊起点、菱形判断、是/否分支与汇合箭头；电子排布图逐项核对轨道数、电子数与洪特规则。
-- 回归钉：wiring 闸门（少注册一张脸即红）、`turnTail` 发布键必须等于 Definition 的 kind、draw 的 draft/final 过滤。
+- **539 例**单元/集成测试，六个包 `tsc --noEmit` 全清；两个 client 产物构建通过。
+- 真机验收不是「没报错」：函数图 canvas 像素回读；流程图截图读到胶囊起点、菱形判断、是/否分支与汇合箭头；电子排布图逐项核对轨道数、电子数与洪特规则；渐变与模糊读渲染后的 DOM（`linearGradient` 停点、`stroke-dasharray`、`filter`）而不是只看截图。
+- 回归钉：wiring 闸门（少注册一张脸即红）、`turnTail` 发布键必须等于 Definition 的 kind、draw 的 draft/final 过滤、虚线只能落在描边型笔上、渐变角度按 CSS 约定。
 
 ---
 
@@ -107,6 +120,8 @@ dsh --profile <profile> --dump-config
 顺带的取舍：「完全展开」档下同一张卡会出现两次（过程行 + 产出物行），目前未去重；「轨迹」页按设计只显示原始调用，看不到卡片。
 
 其他限制：`figure` 只有四个模板，不是通用约束求解器；`orbital_diagram` 只支持 H–Zn，`atom_shell` 只支持 H–Ca；`draw` 是确定性矢量手绘，不是像素级绘画模型。
+
+`draw` 卡片现在是一张**位图快照**：图里的文字不可选中，每张 1200×800 的卡约占 8.6MB 显存（缓存上限 6 张），首次上屏有约 100–300ms 占位。这是为了换掉「滚一次、放大一次就重栅格化」的卡顿；`table` / `flowchart` / `figure` / 函数图仍是活的矢量，不受影响。
 
 ---
 

@@ -263,8 +263,100 @@ describe('draw payload', () => {
     if (parsed === null) return
     expect(parsed.size).toEqual({ w: 640, h: 400 })
     expect(parsed.paper).toBe('plain')
+    expect(parsed.background).toBeUndefined()
     expect(parsed.rough).toBe(true)
-    expect(parsed.elements[0]).toMatchObject({ type: 'path', pen: 'ball', width: 2, color: undefined })
+    expect(parsed.elements[0]).toMatchObject({ type: 'path', pen: 'ball', width: 2, color: undefined, dash: 'solid' })
+    expect('strokeOpacity' in (parsed.elements[0] ?? {})).toBe(false)
+  })
+
+  it('keeps a canvas background by name or hex, and treats "none" as no background', () => {
+    const named = parseDrawPayload({ background: 'blue', elements: [{ type: 'path', d: 'M 0 0 L 10 10' }] })
+    expect(named?.background).toBe('blue')
+    const hex = parseDrawPayload({ background: '#102030', elements: [{ type: 'path', d: 'M 0 0 L 10 10' }] })
+    expect(hex?.background).toBe('#102030')
+    const none = parseDrawPayload({ background: 'none', elements: [{ type: 'path', d: 'M 0 0 L 10 10' }] })
+    expect(none?.background).toBeUndefined()
+  })
+
+  it('accepts a gradient fill as from/to shorthand, and defaults the angle to top-down', () => {
+    const parsed = parseDrawPayload({
+      elements: [{
+        type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10,
+        fill: { type: 'linear', from: 'blue', to: '#102030' },
+      }],
+    })
+    const fill = (parsed?.elements[0] as { fill?: unknown } | undefined)?.fill
+    expect(fill).toEqual({
+      type: 'linear',
+      angle: 180,
+      center: undefined,
+      radius: undefined,
+      stops: [
+        { offset: 0, color: 'blue', opacity: 1 },
+        { offset: 1, color: '#102030', opacity: 1 },
+      ],
+    })
+  })
+
+  it('sorts gradient stops by offset and keeps per-stop opacity', () => {
+    const parsed = parseDrawPayload({
+      elements: [{
+        type: 'path', d: 'M 0 0 L 10 0 L 10 10 Z', fill: {
+          type: 'radial',
+          stops: [{ offset: 1, color: 'red' }, { offset: 0, color: 'blue', opacity: 0.2 }],
+          center: { x: 5, y: 5 },
+          radius: 20,
+        },
+      }],
+    })
+    const fill = (parsed?.elements[0] as { fill?: unknown } | undefined)?.fill
+    expect(fill).toMatchObject({
+      type: 'radial',
+      center: { x: 5, y: 5 },
+      radius: 20,
+      stops: [{ offset: 0, color: 'blue', opacity: 0.2 }, { offset: 1, color: 'red', opacity: 1 }],
+    })
+  })
+
+  it('refuses a CSS gradient string with the JSON form that would work', () => {
+    const result = validateCardArgs({
+      kind: 'draw',
+      payload: { elements: [{ type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, fill: 'linear-gradient(#fff, #000)' }] },
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toContain('cannot be a CSS string')
+      expect(result.error).toContain('"type":"linear","from"')
+    }
+  })
+
+  it.each([
+    ['gradient with one stop', { type: 'linear', stops: [{ offset: 0, color: 'blue' }] }],
+    ['gradient with too many stops', { type: 'linear', stops: Array.from({ length: 9 }, (_v, index) => ({ offset: index / 8, color: 'blue' })) }],
+    ['gradient offset out of range', { type: 'linear', stops: [{ offset: -1, color: 'blue' }, { offset: 1, color: 'red' }] }],
+    ['a stop without a color', { type: 'linear', stops: [{ offset: 0 }, { offset: 1, color: 'red' }] }],
+    ['a stop opacity out of range', { type: 'linear', stops: [{ offset: 0, color: 'blue', opacity: 2 }, { offset: 1, color: 'red' }] }],
+    ['from without to', { type: 'linear', from: 'blue' }],
+    ['both stops and from/to', { type: 'linear', from: 'blue', to: 'red', stops: [{ offset: 0, color: 'blue' }, { offset: 1, color: 'red' }] }],
+    ['an unknown gradient type', { type: 'conic', from: 'blue', to: 'red' }],
+    ['a linear gradient with a center', { type: 'linear', from: 'blue', to: 'red', center: { x: 1, y: 2 } }],
+    ['a radial gradient with an angle', { type: 'radial', from: 'blue', to: 'red', angle: 45 }],
+    ['a radial gradient with a negative radius', { type: 'radial', from: 'blue', to: 'red', radius: -5 }],
+  ])('refuses a gradient with %s', (_label, fill) => {
+    expect(parseDrawPayload({ elements: [{ type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, fill }] })).toBeNull()
+  })
+
+  it('keeps a faded stroke and a faded outline, down to fully transparent ink', () => {
+    const parsed = parseDrawPayload({
+      elements: [
+        { type: 'path', d: 'M 0 0 L 40 0', pen: 'ball', dash: 'dotted', strokeOpacity: 0.35 },
+        { type: 'shape', shape: 'line', x: 0, y: 10, w: 40, h: 0, strokeOpacity: 0 },
+      ],
+    })
+    expect(parsed).not.toBeNull()
+    if (parsed === null) return
+    expect(parsed.elements[0]).toMatchObject({ type: 'path', dash: 'dotted', strokeOpacity: 0.35 })
+    expect(parsed.elements[1]).toMatchObject({ type: 'shape', strokeOpacity: 0 })
   })
 
   it('keeps explicit canvas, paper and element fields', () => {
@@ -301,6 +393,8 @@ describe('draw payload', () => {
     ['size not an object', { size: [], elements: [{ type: 'text', x: 0, y: 0, text: 'x' }] }],
     ['size out of range', { size: { w: 5000 }, elements: [{ type: 'text', x: 0, y: 0, text: 'x' }] }],
     ['unknown paper', { paper: 'carbon', elements: [{ type: 'text', x: 0, y: 0, text: 'x' }] }],
+    ['unknown background color', { background: 'chartreuse', elements: [{ type: 'text', x: 0, y: 0, text: 'x' }] }],
+    ['non-string background', { background: 7, elements: [{ type: 'text', x: 0, y: 0, text: 'x' }] }],
     ['non-boolean rough', { rough: 'yes', elements: [{ type: 'text', x: 0, y: 0, text: 'x' }] }],
     ['blank path', { elements: [{ type: 'path', d: '   ' }] }],
     ['unknown pen', { elements: [{ type: 'path', d: 'M 0 0 L 10 10', pen: 'quill' }] }],
@@ -308,6 +402,13 @@ describe('draw payload', () => {
     ['unknown color', { elements: [{ type: 'path', d: 'M 0 0 L 10 10', color: 'chartreuse' }] }],
     ['bad hex color', { elements: [{ type: 'path', d: 'M 0 0 L 10 10', color: '#12g456' }] }],
     ['path fillOpacity out of range', { elements: [{ type: 'path', d: 'M 0 0 L 10 10', fill: 'blue', fillOpacity: 2 }] }],
+    ['path strokeOpacity out of range', { elements: [{ type: 'path', d: 'M 0 0 L 10 10', strokeOpacity: 1.5 }] }],
+    ['unknown path dash', { elements: [{ type: 'path', d: 'M 0 0 L 10 10', dash: 'wavy' }] }],
+    [
+      'dash on a pen that draws an outline',
+      { elements: [{ type: 'path', d: 'M 0 0 L 10 10', pen: 'fountain', dash: 'dashed' }] },
+    ],
+    ['shape strokeOpacity not a number', { elements: [{ type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, strokeOpacity: 'faint' }] }],
     ['unknown shape', { elements: [{ type: 'shape', shape: 'star', x: 0, y: 0, w: 10, h: 10 }] }],
     ['negative rect extent', { elements: [{ type: 'shape', shape: 'rect', x: 0, y: 0, w: -10, h: 10 }] }],
     ['zero-length line', { elements: [{ type: 'shape', shape: 'line', x: 0, y: 0, w: 0, h: 0 }] }],
@@ -343,6 +444,18 @@ describe('draw payload', () => {
     expect(parsed.elements[0]).toMatchObject({
       type: 'pixels', x: 40, y: 60, cell: 12, rows: ['##', '#'], palette: { '#': 'blue', '.': '#ffcc00' },
     })
+  })
+
+  it('refuses a dash on an outline pen by naming the pens it does work on', () => {
+    const result = validateCardArgs({
+      kind: 'draw',
+      payload: { elements: [{ type: 'path', d: 'M 0 0 L 10 10', pen: 'brush', dash: 'dashed' }] },
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toContain('element 0')
+      expect(result.error).toContain('ball, marker, pencil, highlighter')
+    }
   })
 
   it('is refused by validateCardArgs with the payload reason', () => {
@@ -427,5 +540,53 @@ describe('draw path grammar', () => {
     ['arguments after Z', 'M 0 0 L 1 1 Z 5'],
   ])('refuses %s', (_label, d) => {
     expect(parseDrawPathData(d).ok).toBe(false)
+  })
+})
+describe('blend modes', () => {
+  it('defaults to normal and keeps a named mode on path, shape and pixels', () => {
+    const parsed = parseDrawPayload({
+      elements: [
+        { type: 'path', d: 'M 0 0 L 10 0' },
+        { type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, blend: 'screen' },
+        { type: 'pixels', x: 0, y: 0, rows: ['#'], palette: { '#': 'red' }, blend: 'multiply' },
+      ],
+    })
+    expect(parsed).not.toBeNull()
+    if (parsed === null) return
+    expect(parsed.elements[0]).toMatchObject({ type: 'path', blend: 'normal' })
+    expect(parsed.elements[1]).toMatchObject({ type: 'shape', blend: 'screen' })
+    expect(parsed.elements[2]).toMatchObject({ type: 'pixels', blend: 'multiply' })
+  })
+
+  it('refuses an unknown blend mode with the values it accepts', () => {
+    const result = validateCardArgs({
+      kind: 'draw',
+      payload: { elements: [{ type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, blend: 'lighten' }] },
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('normal, multiply, screen, overlay, soft-light')
+  })
+})
+
+describe('blur', () => {
+  it('keeps a positive blur on path and shape and drops a zero one', () => {
+    const parsed = parseDrawPayload({
+      elements: [
+        { type: 'path', d: 'M 0 0 L 10 0', blur: 12 },
+        { type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, blur: 0 },
+      ],
+    })
+    expect(parsed).not.toBeNull()
+    if (parsed === null) return
+    expect(parsed.elements[0]).toMatchObject({ type: 'path', blur: 12 })
+    expect('blur' in (parsed.elements[1] ?? {})).toBe(false)
+  })
+
+  it.each([
+    ['a blur above the ceiling', 500],
+    ['a negative blur', -2],
+    ['a non-numeric blur', 'soft'],
+  ])('refuses %s', (_label, blur) => {
+    expect(parseDrawPayload({ elements: [{ type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, blur }] })).toBeNull()
   })
 })

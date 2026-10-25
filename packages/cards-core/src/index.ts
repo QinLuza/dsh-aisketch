@@ -140,6 +140,15 @@ export const MAX_PIXEL_PALETTE = 16
 /** The pen set, named after a note app's physical pens. */
 export const DRAW_PENS = ['ball', 'fountain', 'marker', 'pencil', 'calligraphy', 'brush', 'highlighter'] as const
 
+/**
+ * The pens the engine paints as a constant-width *stroke*, so a dash pattern can
+ * land on them. The rest (fountain, brush, calligraphy) are variable-width
+ * filled outlines -- a dash has nothing to dash -- and that split is asserted
+ * against `penSpec` by the tests, because the switch in the engine is the
+ * authority and this list is what the model is told.
+ */
+export const DRAW_STROKE_PENS = ['ball', 'marker', 'pencil', 'highlighter'] as const
+
 /** A pen choice for a path element; `ball` when omitted. */
 export type DrawPen = typeof DRAW_PENS[number]
 
@@ -160,6 +169,38 @@ export const DRAW_SHAPES = ['rect', 'ellipse', 'line', 'arrow', 'triangle', 'dia
 
 /** The primitive a shape element draws. */
 export type DrawShapeKind = typeof DRAW_SHAPES[number]
+
+/** Gradient kinds a fill can name. */
+export const DRAW_GRADIENT_TYPES = ['linear', 'radial'] as const
+
+/** The gradient kind a fill names. */
+export type DrawGradientType = typeof DRAW_GRADIENT_TYPES[number]
+
+/** Stop ceiling for one gradient: a ramp, not a palette dump. */
+export const MAX_DRAW_GRADIENT_STOPS = 8
+
+/**
+ * Blend modes an element can name, spelled exactly like the CSS property values
+ * a model already knows.
+ *
+ * These are what turn "a warm shape on a scene" into light: a `screen` wash
+ * lightens what is under it, a `multiply` wash shades it, and neither needs a
+ * new color. `normal` is the default and reproduces the old behaviour.
+ */
+export const DRAW_BLENDS = ['normal', 'multiply', 'screen', 'overlay', 'soft-light'] as const
+
+/** The blend mode an element paints with. */
+export type DrawBlend = typeof DRAW_BLENDS[number]
+
+/**
+ * Blur ceiling for one element, in canvas units.
+ *
+ * A blur is what makes light a thing rather than a shape: a shaft that ends in
+ * a hard wedge reads as painted paper, and the same wedge with a 20-unit spread
+ * reads as light. The ceiling keeps a payload from costing a full-canvas buffer
+ * with a radius that would erase the picture anyway.
+ */
+export const MAX_DRAW_BLUR = 120
 
 /** Horizontal alignment of a text element around its x. */
 export const DRAW_ANCHORS = ['start', 'middle', 'end'] as const
@@ -188,6 +229,43 @@ export const DRAW_COLORS = {
   white: '#ffffff',
 } as const
 
+/** One stop in a {@link DrawGradient}. */
+export interface DrawGradientStop {
+  /** Position along the gradient, 0..1. Must not decrease across the list. */
+  readonly offset: number
+  /** Stop color: a palette name or `#rgb`/`#rrggbb`. */
+  readonly color: string
+  /** Stop alpha, 1 when unset. */
+  readonly opacity: number
+}
+
+/**
+ * A declarative gradient fill.
+ *
+ * The model never supplies markup or coordinates: it names the ramp and the
+ * engine resolves the line (or circle) from the element's own box, so the same
+ * payload always ramps the same way. This is what a sky needs -- a ladder of
+ * ten translucent bands is both expensive and, at the seams, visibly banded.
+ */
+export interface DrawGradient {
+  readonly type: 'linear' | 'radial'
+  /** Two to {@link MAX_DRAW_GRADIENT_STOPS} stops, in non-decreasing `offset` order. */
+  readonly stops: readonly DrawGradientStop[]
+  /**
+   * Linear only: direction in degrees, using the CSS `linear-gradient` angle
+   * (0 points up, 90 points right, 180 points down -- the default), so a model's
+   * prior for this field is the one that works.
+   */
+  readonly angle: number
+  /** Radial only: centre in canvas units, the element's box centre when unset. */
+  readonly center: { readonly x: number; readonly y: number } | undefined
+  /** Radial only: radius in canvas units, half the box diagonal when unset. */
+  readonly radius: number | undefined
+}
+
+/** A fill: one flat color, or a gradient. */
+export type DrawFill = string | DrawGradient
+
 /** One freehand stroke: a path in the SVG mini-grammar, drawn with one pen. */
 export interface DrawPathElement {
   readonly type: 'path'
@@ -203,7 +281,7 @@ export interface DrawPathElement {
    * only ever be bare triangles, which is why a `path` could not carry flat
    * color. Filled subpaths are painted first and the stroke goes on top.
    */
-  readonly fill?: string
+  readonly fill?: DrawFill
   /**
    * Opacity of {@link DrawPathElement.fill}; 1 when unset.
    *
@@ -212,6 +290,21 @@ export interface DrawPathElement {
    * or ellipse, which is how a landscape turned into an icon.
    */
   readonly fillOpacity?: number
+  /**
+   * Multiplier on the pen's own ink opacity, 0..1; 1 when unset.
+   *
+   * Without it a ballpoint could only be faint by switching to a highlighter --
+   * the wrong trade, because the pen carries the stroke's *shape*, not its
+   * strength. This is what makes receded background ink, a ghost line under a
+   * final one, or an unfinished edge drawable with the pen unchanged.
+   */
+  readonly strokeOpacity?: number
+  /** Dash pattern for the stroke; `solid` when unset, as the engine emits it. */
+  readonly dash: DrawDash
+  /** How this element's ink combines with what is already painted; `normal` when unset. */
+  readonly blend?: DrawBlend
+  /** Softening spread in canvas units; 0 or absent keeps a crisp edge. */
+  readonly blur?: number
 }
 
 /** One geometric primitive, optionally wobbled to look hand-drawn. */
@@ -224,10 +317,11 @@ export interface DrawShapeElement {
   readonly w: number
   readonly h: number
   readonly color: string | undefined
-  /** Fill color, or undefined to draw the outline only. */
-  readonly fill: string | undefined
+  /** Fill color or gradient, or undefined to draw the outline only. */
+  readonly fill: DrawFill | undefined
   /**
-   * Opacity of {@link DrawShapeElement.fill}; 0.25 when unset.
+   * Opacity of {@link DrawShapeElement.fill}; 0.25 when unset, or 1 when the fill
+   * is a gradient, whose stops already carry their own alpha.
    *
    * The default is a wash so a background band cannot erase what was drawn
    * before it. Raise it to 1 for a solid block of color -- which is what a sky
@@ -236,10 +330,22 @@ export interface DrawShapeElement {
   readonly fillOpacity?: number
   readonly width: number
   readonly dash: DrawDash
+  /**
+   * Ink opacity of the outline and any arrowheads, 0..1; 0.95 when unset.
+   *
+   * Same reason as {@link DrawPathElement.strokeOpacity}: a construction line
+   * and a solid edge differ only in strength, and before this field the only way
+   * to say "faint" was `dashed`, which changes what the line *is*.
+   */
+  readonly strokeOpacity?: number
   /** `arrow` only: also draw a head at the start endpoint. */
   readonly arrowStart: boolean
   /** Resolved hand-drawn wobble: the element's own choice, else the payload's. */
   readonly rough: boolean
+  /** How this element's ink combines with what is already painted; `normal` when unset. */
+  readonly blend?: DrawBlend
+  /** Softening spread in canvas units; 0 or absent keeps a crisp edge. */
+  readonly blur?: number
 }
 
 /** One line of text (newlines allowed), placed by baseline start point. */
@@ -285,6 +391,8 @@ export interface DrawPixelElement {
   readonly rows: readonly string[]
   /** Character to color; a space is always transparent. */
   readonly palette: Readonly<Record<string, string>>
+  /** How this block's ink combines with what is already painted; `normal` when unset. */
+  readonly blend?: DrawBlend
 }
 
 /** Every element a drawing can hold. */
@@ -294,6 +402,17 @@ export type DrawElement = DrawPathElement | DrawShapeElement | DrawTextElement |
 export interface DrawPayload {
   readonly size: { readonly w: number; readonly h: number }
   readonly paper: DrawPaper
+  /**
+   * Canvas color painted under the paper rules and every element, or undefined
+   * to let the card surface show through.
+   *
+   * The paper set has four *patterns*, not four colors, so before this field a
+   * night sky, a cream page or a slate field could only be faked with a
+   * full-canvas rect as element zero -- which then also wobbled, carried a
+   * stroke, and counted against the element ceiling. A background is not an
+   * element; it is the surface the ink sits on.
+   */
+  readonly background: string | undefined
   readonly rough: boolean
   readonly elements: readonly DrawElement[]
 }
@@ -384,6 +503,11 @@ function isFlowchartShape(value: unknown): value is FlowchartShape {
 /** Narrow one unknown value to a {@link DrawPen}. */
 function isDrawPen(value: unknown): value is DrawPen {
   return typeof value === 'string' && (DRAW_PENS as readonly string[]).includes(value)
+}
+
+/** Whether a pen is one the engine paints as a stroke, so it can carry a dash. */
+function isDrawStrokePen(pen: DrawPen): boolean {
+  return (DRAW_STROKE_PENS as readonly string[]).includes(pen)
 }
 
 /** Narrow one unknown value to a {@link DrawPaper}. */
@@ -925,6 +1049,182 @@ function checkDrawColor(value: unknown, at: string, field: string): DrawColorChe
 }
 
 /**
+ * Check one element's blur spread, in canvas units; absent means a crisp edge.
+ * @param value - the raw field value.
+ * @param at - element prefix for the refusal message.
+ * @param field - field name for the refusal message.
+ */
+function checkDrawBlur(value: unknown, at: string, field: string): { readonly ok: true; readonly blur: number | undefined } | { readonly ok: false; readonly error: string } {
+  if (value === undefined || value === null) return { ok: true, blur: undefined }
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return { ok: false, error: `${at}: ${field} must be a number between 0 and ${MAX_DRAW_BLUR}` }
+  }
+  if (value < 0 || value > MAX_DRAW_BLUR) {
+    return { ok: false, error: `${at}: ${field} must be between 0 and ${MAX_DRAW_BLUR}` }
+  }
+  return { ok: true, blur: value > 0 ? value : undefined }
+}
+
+/**
+ * Check one element's blend mode, defaulting to `normal`.
+ * @param value - the raw field value.
+ * @param at - element prefix for the refusal message.
+ * @param field - field name for the refusal message.
+ */
+function checkDrawBlend(value: unknown, at: string, field: string): { readonly ok: true; readonly blend: DrawBlend } | { readonly ok: false; readonly error: string } {
+  if (value === undefined || value === null) return { ok: true, blend: 'normal' }
+  if (typeof value !== 'string' || !(DRAW_BLENDS as readonly string[]).includes(value)) {
+    return { ok: false, error: `${at}: ${field} must be one of: ${DRAW_BLENDS.join(', ')}` }
+  }
+  return { ok: true, blend: value as DrawBlend }
+}
+
+/**
+ * Check one bounded numeric field: absent means the fallback.
+ * @param value - the raw field value.
+ * @param at - element prefix for the refusal message.
+ * @param field - field name for the refusal message.
+ * @param min - smallest admitted value.
+ * @param max - largest admitted value.
+ * @param fallback - the value used when the field is absent.
+ */
+function checkNumber(
+  value: unknown,
+  at: string,
+  field: string,
+  min: number,
+  max: number,
+  fallback: number,
+): { readonly ok: true; readonly value: number } | { readonly ok: false; readonly error: string } {
+  if (value === undefined || value === null) return { ok: true, value: fallback }
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return { ok: false, error: `${at}: ${field} must be a number between ${min} and ${max}` }
+  }
+  if (value < min || value > max) {
+    return { ok: false, error: `${at}: ${field} must be between ${min} and ${max}` }
+  }
+  return { ok: true, value }
+}
+
+/**
+ * Check one fill field: absent, `"none"`, a flat color, or a gradient.
+ * @param value - the raw field value.
+ * @param at - element prefix for the refusal message.
+ * @param field - field name for the refusal message.
+ */
+function checkDrawFill(value: unknown, at: string, field: string): { readonly ok: true; readonly fill: DrawFill | undefined } | { readonly ok: false; readonly error: string } {
+  if (value === undefined || value === null || value === 'none') return { ok: true, fill: undefined }
+  if (typeof value === 'string') {
+    if (/^(?:repeating-)?(?:linear|radial|conic)-gradient\(/iu.test(value.trim())) {
+      return {
+        ok: false,
+        error: `${at}: ${field} cannot be a CSS string. Send an object instead, e.g. `
+          + '{"type":"linear","from":"#f5a15a","to":"#232a4d","angle":180} or '
+          + '{"type":"radial","stops":[{"offset":0,"color":"#ffd27a"},{"offset":1,"color":"#ffd27a","opacity":0}]}',
+      }
+    }
+    const color = checkDrawColor(value, at, field)
+    return color.ok ? { ok: true, fill: color.color } : { ok: false, error: color.error }
+  }
+  const gradient = checkDrawGradient(value, at, field)
+  return gradient.ok ? { ok: true, fill: gradient.gradient } : { ok: false, error: gradient.error }
+}
+
+/**
+ * Check one gradient object and normalize it: stops sorted, opacity and angle defaulted.
+ *
+ * Stops carry their own alpha, which is what makes "warm haze fading into the
+ * sky" or "a glow that dissolves into the background" a single element instead
+ * of a stack of bands. Refusing at the Host keeps every refusal correctable.
+ * @param value - the raw fill object.
+ * @param at - element prefix for the refusal message.
+ * @param field - field name for the refusal message.
+ */
+function checkDrawGradient(value: unknown, at: string, field: string): { readonly ok: true; readonly gradient: DrawGradient } | { readonly ok: false; readonly error: string } {
+  if (!isPlainObject(value)) return { ok: false, error: `${at}: ${field} must be a color name, #rrggbb, or a gradient object` }
+  const type = value.type
+  if (typeof type !== 'string' || !(DRAW_GRADIENT_TYPES as readonly string[]).includes(type)) {
+    return { ok: false, error: `${at}: ${field}.type must be one of: ${DRAW_GRADIENT_TYPES.join(', ')}` }
+  }
+  const hasStops = value.stops !== undefined && value.stops !== null
+  const hasEnds = value.from !== undefined || value.to !== undefined
+  if (hasStops && hasEnds) {
+    return { ok: false, error: `${at}: ${field} takes either stops or from/to, not both` }
+  }
+  let rawStops: unknown
+  if (hasEnds) {
+    if (value.from === undefined || value.from === null || value.to === undefined || value.to === null) {
+      return { ok: false, error: `${at}: ${field} needs both from and to when using the shorthand` }
+    }
+    rawStops = [{ offset: 0, color: value.from }, { offset: 1, color: value.to }]
+  } else {
+    rawStops = value.stops
+  }
+  if (!Array.isArray(rawStops) || rawStops.length < 2 || rawStops.length > MAX_DRAW_GRADIENT_STOPS) {
+    return { ok: false, error: `${at}: ${field} needs from/to or 2..${MAX_DRAW_GRADIENT_STOPS} stops` }
+  }
+  const stops: DrawGradientStop[] = []
+  for (let index = 0; index < rawStops.length; index += 1) {
+    const raw = rawStops[index]
+    if (!isPlainObject(raw)) return { ok: false, error: `${at}: ${field}.stops[${index}] must be an object` }
+    const offset = raw.offset
+    if (typeof offset !== 'number' || !Number.isFinite(offset) || offset < 0 || offset > 1) {
+      return { ok: false, error: `${at}: ${field}.stops[${index}].offset must be a number between 0 and 1` }
+    }
+    const color = checkDrawColor(raw.color, at, `${field}.stops[${index}].color`)
+    if (!color.ok) return { ok: false, error: color.error }
+    if (color.color === undefined) {
+      return { ok: false, error: `${at}: ${field}.stops[${index}].color is required` }
+    }
+    const opacity = checkDrawOpacity(raw.opacity, at, `${field}.stops[${index}].opacity`)
+    if (!opacity.ok) return { ok: false, error: opacity.error }
+    stops.push({ offset, color: color.color, opacity: opacity.opacity ?? 1 })
+  }
+  stops.sort((left, right) => left.offset - right.offset)
+
+  let angle = 180
+  if (value.angle !== undefined && value.angle !== null) {
+    if (typeof value.angle !== 'number' || !Number.isFinite(value.angle)) {
+      return { ok: false, error: `${at}: ${field}.angle must be a number of degrees` }
+    }
+    angle = ((value.angle % 360) + 360) % 360
+  }
+  if (type === 'radial' && value.angle !== undefined && value.angle !== null) {
+    return { ok: false, error: `${at}: ${field}.angle only applies to a linear gradient; a radial gradient uses center and radius` }
+  }
+
+  let center: { readonly x: number; readonly y: number } | undefined
+  if (value.center !== undefined && value.center !== null) {
+    if (type !== 'radial') {
+      return { ok: false, error: `${at}: ${field}.center only applies to a radial gradient` }
+    }
+    const rawCenter = value.center
+    if (!isPlainObject(rawCenter)) return { ok: false, error: `${at}: ${field}.center must be an object like { x, y }` }
+    const coords: number[] = []
+    for (const axis of ['x', 'y'] as const) {
+      const value2 = rawCenter[axis]
+      if (typeof value2 !== 'number' || !Number.isFinite(value2) || Math.abs(value2) > MAX_DRAW_COORD) {
+        return { ok: false, error: `${at}: ${field}.center.${axis} must be a finite number of magnitude at most ${MAX_DRAW_COORD}` }
+      }
+      coords.push(value2)
+    }
+    center = { x: coords[0]!, y: coords[1]! }
+  }
+
+  let radius: number | undefined
+  if (value.radius !== undefined && value.radius !== null) {
+    if (type !== 'radial') {
+      return { ok: false, error: `${at}: ${field}.radius only applies to a radial gradient` }
+    }
+    const checked = checkNumber(value.radius, at, `${field}.radius`, 0.01, MAX_DRAW_COORD, 1)
+    if (!checked.ok) return { ok: false, error: checked.error }
+    radius = checked.value
+  }
+
+  return { ok: true, gradient: { type: type as DrawGradientType, stops, angle, center, radius } }
+}
+
+/**
  * Resolve a validated color to a paint value the browser can apply: theme ink
  * for undefined, the palette hex for a name, and the hex as given.
  * @param color - a color that passed {@link checkDrawColor}.
@@ -934,6 +1234,25 @@ export function resolveDrawColor(color: string | undefined): string {
   if (color === undefined) return 'var(--dsw-alias-text-primary, #1f1f1f)'
   const named: string | undefined = (DRAW_COLORS as Record<string, string | undefined>)[color]
   return named ?? color
+}
+
+/** Outcome of one opacity field check: admitted (possibly undefined), or the reason. */
+type DrawOpacityCheck =
+  | { readonly ok: true; readonly opacity: number | undefined }
+  | { readonly ok: false; readonly error: string }
+
+/**
+ * Check one 0..1 opacity field, which is absent when omitted or blank.
+ * @param value - the raw field value.
+ * @param at - element prefix for the refusal message.
+ * @param field - field name for the refusal message.
+ */
+function checkDrawOpacity(value: unknown, at: string, field: string): DrawOpacityCheck {
+  if (value === undefined || value === null) return { ok: true, opacity: undefined }
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    return { ok: false, error: `${at}: ${field} must be a number between 0 and 1` }
+  }
+  return { ok: true, opacity: value }
 }
 
 /**
@@ -991,22 +1310,19 @@ function checkDrawPayload(
     paper = rawPaper
   }
 
+  let background: string | undefined
+  const rawBackground = payload.background
+  if (rawBackground !== undefined && rawBackground !== null && rawBackground !== 'none') {
+    const checked = checkDrawColor(rawBackground, 'draw', 'background')
+    if (!checked.ok) return { ok: false, error: checked.error }
+    background = checked.color
+  }
+
   let rough = true
   const rawRough = payload.rough
   if (rawRough !== undefined && rawRough !== null) {
     if (typeof rawRough !== 'boolean') return { ok: false, error: 'draw rough must be a boolean' }
     rough = rawRough
-  }
-
-  const checkNumber = (value: unknown, at: string, field: string, min: number, max: number, fallback: number): { readonly ok: true; readonly value: number } | { readonly ok: false; readonly error: string } => {
-    if (value === undefined || value === null) return { ok: true, value: fallback }
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      return { ok: false, error: `${at}: ${field} must be a number between ${min} and ${max}` }
-    }
-    if (value < min || value > max) {
-      return { ok: false, error: `${at}: ${field} must be between ${min} and ${max}` }
-    }
-    return { ok: true, value }
   }
 
   const elements: DrawElement[] = []
@@ -1034,23 +1350,36 @@ function checkDrawPayload(
       if (!width.ok) return { ok: false, error: width.error }
       const color = checkDrawColor(raw.color, at, 'color')
       if (!color.ok) return { ok: false, error: color.error }
-      let pathFill: string | undefined
-      if (raw.fill !== undefined && raw.fill !== null && raw.fill !== 'none') {
-        const checked = checkDrawColor(raw.fill, at, 'fill')
-        if (!checked.ok) return { ok: false, error: checked.error }
-        pathFill = checked.color
-      }
-      let pathFillOpacity: number | undefined
-      if (raw.fillOpacity !== undefined && raw.fillOpacity !== null) {
-        if (typeof raw.fillOpacity !== 'number' || !Number.isFinite(raw.fillOpacity) || raw.fillOpacity < 0 || raw.fillOpacity > 1) {
-          return { ok: false, error: `${at}: fillOpacity must be a number between 0 and 1` }
+      const pathFill = checkDrawFill(raw.fill, at, 'fill')
+      if (!pathFill.ok) return { ok: false, error: pathFill.error }
+      const pathFillOpacity = checkDrawOpacity(raw.fillOpacity, at, 'fillOpacity')
+      if (!pathFillOpacity.ok) return { ok: false, error: pathFillOpacity.error }
+      const pathStrokeOpacity = checkDrawOpacity(raw.strokeOpacity, at, 'strokeOpacity')
+      if (!pathStrokeOpacity.ok) return { ok: false, error: pathStrokeOpacity.error }
+      const pathBlend = checkDrawBlend(raw.blend, at, 'blend')
+      if (!pathBlend.ok) return { ok: false, error: pathBlend.error }
+      const pathBlur = checkDrawBlur(raw.blur, at, 'blur')
+      if (!pathBlur.ok) return { ok: false, error: pathBlur.error }
+      let pathDash: DrawDash = 'solid'
+      if (raw.dash !== undefined && raw.dash !== null) {
+        if (!isDrawDash(raw.dash)) {
+          return { ok: false, error: `${at}: dash must be one of: ${DRAW_DASHES.join(', ')}` }
         }
-        pathFillOpacity = raw.fillOpacity
+        pathDash = raw.dash
+        if (pathDash !== 'solid' && !isDrawStrokePen(pen)) {
+          return {
+            ok: false,
+            error: `${at}: pen "${pen}" draws a variable-width filled outline, so a dash has nothing to dash; `
+              + `use one of ${DRAW_STROKE_PENS.join(', ')} for a dashed stroke`,
+          }
+        }
       }
       elements.push({
-        type: 'path', d, pen, color: color.color, width: width.value,
-        ...pathFill === undefined ? {} : { fill: pathFill },
-        ...pathFillOpacity === undefined ? {} : { fillOpacity: pathFillOpacity },
+        type: 'path', d, pen, color: color.color, width: width.value, dash: pathDash, blend: pathBlend.blend,
+        ...pathFill.fill === undefined ? {} : { fill: pathFill.fill },
+        ...pathFillOpacity.opacity === undefined ? {} : { fillOpacity: pathFillOpacity.opacity },
+        ...pathStrokeOpacity.opacity === undefined ? {} : { strokeOpacity: pathStrokeOpacity.opacity },
+        ...pathBlur.blur === undefined ? {} : { blur: pathBlur.blur },
       })
       continue
     }
@@ -1080,12 +1409,8 @@ function checkDrawPayload(
       if (!width.ok) return { ok: false, error: width.error }
       const color = checkDrawColor(raw.color, at, 'color')
       if (!color.ok) return { ok: false, error: color.error }
-      let fill: string | undefined
-      if (raw.fill !== undefined && raw.fill !== null && raw.fill !== 'none') {
-        const checked = checkDrawColor(raw.fill, at, 'fill')
-        if (!checked.ok) return { ok: false, error: checked.error }
-        fill = checked.color
-      }
+      const shapeFill = checkDrawFill(raw.fill, at, 'fill')
+      if (!shapeFill.ok) return { ok: false, error: shapeFill.error }
       let dash: DrawDash = 'solid'
       if (raw.dash !== undefined && raw.dash !== null) {
         if (!isDrawDash(raw.dash)) {
@@ -1103,17 +1428,21 @@ function checkDrawPayload(
         if (typeof raw.rough !== 'boolean') return { ok: false, error: `${at}: rough must be a boolean` }
         roughElement = raw.rough
       }
-      let fillOpacity: number | undefined
-      if (raw.fillOpacity !== undefined && raw.fillOpacity !== null) {
-        if (typeof raw.fillOpacity !== 'number' || !Number.isFinite(raw.fillOpacity) || raw.fillOpacity < 0 || raw.fillOpacity > 1) {
-          return { ok: false, error: `${at}: fillOpacity must be a number between 0 and 1` }
-        }
-        fillOpacity = raw.fillOpacity
-      }
+      const shapeFillOpacity = checkDrawOpacity(raw.fillOpacity, at, 'fillOpacity')
+      if (!shapeFillOpacity.ok) return { ok: false, error: shapeFillOpacity.error }
+      const shapeStrokeOpacity = checkDrawOpacity(raw.strokeOpacity, at, 'strokeOpacity')
+      if (!shapeStrokeOpacity.ok) return { ok: false, error: shapeStrokeOpacity.error }
+      const shapeBlend = checkDrawBlend(raw.blend, at, 'blend')
+      if (!shapeBlend.ok) return { ok: false, error: shapeBlend.error }
+      const shapeBlur = checkDrawBlur(raw.blur, at, 'blur')
+      if (!shapeBlur.ok) return { ok: false, error: shapeBlur.error }
       elements.push({
         type: 'shape', shape, x, y, w, h,
-        color: color.color, fill, width: width.value, dash, arrowStart, rough: roughElement,
-        ...fillOpacity === undefined ? {} : { fillOpacity },
+        color: color.color, fill: shapeFill.fill, width: width.value, dash, arrowStart, rough: roughElement,
+        blend: shapeBlend.blend,
+        ...shapeFillOpacity.opacity === undefined ? {} : { fillOpacity: shapeFillOpacity.opacity },
+        ...shapeStrokeOpacity.opacity === undefined ? {} : { strokeOpacity: shapeStrokeOpacity.opacity },
+        ...shapeBlur.blur === undefined ? {} : { blur: shapeBlur.blur },
       })
       continue
     }
@@ -1239,14 +1568,16 @@ function checkDrawPayload(
       if (painted > MAX_PIXEL_CELLS) {
         return { ok: false, error: `${at}: pixels paints ${painted} cells, above the ${MAX_PIXEL_CELLS} ceiling` }
       }
-      elements.push({ type: 'pixels', x: coords[0]!, y: coords[1]!, cell: cell.value, rows, palette })
+      const pixelsBlend = checkDrawBlend(raw.blend, at, 'blend')
+      if (!pixelsBlend.ok) return { ok: false, error: pixelsBlend.error }
+      elements.push({ type: 'pixels', x: coords[0]!, y: coords[1]!, cell: cell.value, rows, palette, blend: pixelsBlend.blend })
       continue
     }
 
     return { ok: false, error: `${at}: type must be one of: path, shape, text, tape, pixels` }
   }
 
-  return { ok: true, draw: { size: { w: sizeW, h: sizeH }, paper, rough, elements } }
+  return { ok: true, draw: { size: { w: sizeW, h: sizeH }, paper, background, rough, elements } }
 }
 
 /**

@@ -1,6 +1,6 @@
 {
   "name": "dsh-aisketch",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "AISketch for DSH: semantic conversation cards (table, flowchart, hand-drawn draw, teaching figures) plus expression-driven function plots, with zero base changes",
   "license": "MIT",

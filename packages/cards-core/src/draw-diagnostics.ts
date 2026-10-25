@@ -237,7 +237,15 @@ export function analyzeDraw(list: DrawDisplayList): DrawDiagnostics {
   for (const group of list.groups) {
     counts[group.type] = (counts[group.type] ?? 0) + 1
     box = unionBox(box, group.box)
-    for (const ink of group.inks) colors.add(ink.color)
+    for (const ink of group.inks) {
+      // A gradient's palette is its stops; counting only the flat fallback would
+      // report a sunset as a one-color picture.
+      if (ink.kind === 'polygon' && ink.gradient !== undefined) {
+        for (const stop of ink.gradient.stops) colors.add(stop.color)
+      } else {
+        colors.add(ink.color)
+      }
+    }
     const groupBox = group.box
     if (groupBox === undefined) continue
     const left = groupBox.x

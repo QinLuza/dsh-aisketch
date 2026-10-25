@@ -11,7 +11,7 @@
 
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![CI](https://github.com/QinLuza/dsh-aisketch/actions/workflows/ci.yml/badge.svg)
-![tests](https://img.shields.io/badge/tests-470%20passed-brightgreen)
+![tests](https://img.shields.io/badge/tests-539%20passed-brightgreen)
 ![dsh](https://img.shields.io/badge/dsh-0.1.7--rc.2-111)
 
 **零 base 改动**：全部走官方扩展点（tool 注册、`tool.call.toolview`、`conversation.chat.node`、`conversation.chat.turnTail`），没有一行改动 `@deepseek-ai/dsh-*`。
@@ -72,6 +72,30 @@
 手绘卡：模型只写中心线、形状、文字、胶带或像素网格；钢笔出锋、书法笔角度、荧光笔半透明、铅笔颗粒、手绘抖动全部由引擎算。支持 `draft: true` 私有草稿与最终稿，用户只看到成品。
 
 ![山湖小屋手绘插画](docs/assets/screenshots/draw-illustration.png)
+
+#### 0.3 起：光与墨也是字段
+
+| 字段 | 用在 | 解决什么 |
+|---|---|---|
+| `background` | 载荷级 | 画布底色（夜色、牛皮纸），不必拿一个整幅矩形元素伪造 |
+| `strokeOpacity` | `path` / `shape` | 同一支笔的浓淡：远处更淡、压住的辅助线；不用换浅色，也不改笔型 |
+| `dash` | `path` | 自由曲线画虚线（被挡的棱、轨迹）；此前只有 `shape` 有 |
+| `fill` 渐变 | `path` / `shape` | `linear` / `radial` + 2..8 个色标（CSS 角度、`from`/`to` 简写）；一条字段替代 8–12 条色带 |
+| `blend` | `path` / `shape` / `pixels` | `normal` / `multiply` / `screen` / `overlay` / `soft-light`：光叠在物体上 |
+| `blur` | `path` / `shape` | 光柱、光晕、雾、景深；`blur` 是可见扩散半径，两端都按 σ = blur/2 计算 |
+
+渐变和模糊都按**元素自身的包围盒**解析几何，模型不给坐标，所以「同一份载荷必然同一张图」对它们同样成立；光栅预览逐像素采样，模型看到的预览和卡片一致。
+
+<p>
+  <img src="docs/assets/screenshots/draw-dashed-prism.png" width="49%" alt="虚线隐藏棱的三棱柱" />
+  <img src="docs/assets/screenshots/draw-gradient-dusk.png" width="49%" alt="渐变天空与径向光晕的黄昏海景" />
+</p>
+<p>
+  <img src="docs/assets/screenshots/draw-light-blur.png" width="49%" alt="screen 光柱 + multiply 暗部 + blur 柔边" />
+  <img src="docs/assets/screenshots/draw-scene-snapshot.png" width="49%" alt="位图快照渲染的山中小屋" />
+</p>
+
+**渲染是一次性的**：卡片先离屏栅格化成位图再上屏，滚动与放大不再重栅格化。同一张 340 条 `path` 的卡实测：首次滚动从中位 41ms / 单帧 407ms 回到 17ms，放大从 539ms 卡顿降到约 97ms。
 
 ### 4. `show_card` → `figure`
 
@@ -193,12 +217,12 @@ dsh --profile <profile> --dump-config    # 应见 4 行 insert
 
 ## 六、质量与验收
 
-- **470 例**单元/集成测试（cards-core 159 / sketch-core 58 / client-ui-cards 146 / client-ui-sketch 37 / cards-tool 42 / sketch-tool 28），六个包 `tsc --noEmit` 全清。
-- 真机验收不是「没报错」：函数图 canvas 像素回读（曲线/坐标轴非零）；流程图截图读到胶囊起点、菱形判断、是/否分支与汇合箭头；电子排布图逐项核对轨道数、电子数与洪特规则。
-- 回归钉：wiring 闸门（少注册一张脸即红）、`turnTail` 发布键必须等于 Definition 的 kind、draw 的 draft/final 过滤。
+- **539 例**单元/集成测试（cards-core 194 / client-ui-cards 170 / sketch-core 58 / cards-tool 52 / client-ui-sketch 37 / sketch-tool 28），六个包 `tsc --noEmit` 全清。
+- 真机验收不是「没报错」：函数图 canvas 像素回读（曲线/坐标轴非零）；流程图截图读到胶囊起点、菱形判断、是/否分支与汇合箭头；电子排布图逐项核对轨道数、电子数与洪特规则；渐变/模糊读渲染后的 DOM（`linearGradient` 停点、`stroke-dasharray`、`filter`）而不是只看截图。
+- 回归钉：wiring 闸门（少注册一张脸即红）、`turnTail` 发布键必须等于 Definition 的 kind、draw 的 draft/final 过滤、虚线只能落在描边型笔上、渐变角度按 CSS 约定。
 
 ```bash
-pnpm test          # 470 passed
+pnpm test          # 539 passed
 pnpm typecheck     # 六个包全清
 pnpm build:client  # 两个 lib/client.js
 ```
@@ -213,6 +237,8 @@ pnpm build:client  # 两个 lib/client.js
 - `figure` 目前只有四个模板，不是通用约束求解器；标签位置固定，不做自动避让。
 - `orbital_diagram` 支持 H–Zn，`atom_shell` 支持 H–Ca；超出范围会直接报错，不会猜。
 - `draw` 是确定性矢量手绘，不是像素级绘画模型；`draft` 草稿默认不展示，模型最多提交一次 final。
+- **`draw` 卡片是一张位图快照**：图里的文字不可选中；每张 1200×800 的卡约占 8.6MB 显存（缓存上限 6 张）；首次上屏有约 100–300ms 的占位。换来的是滚动与放大不再重栅格化。
+- 模糊、混合模式、渐变都受绘制部件数量影响：三四百条 `path` 的卡仍会比几十条的慢一档，提示词里建议把大色块合并、少用重复罩染。
 - Host 半与 client 半的改动都需要重启应用才生效（无 HMR）。运行中不要重建 client 产物。
 
 ---

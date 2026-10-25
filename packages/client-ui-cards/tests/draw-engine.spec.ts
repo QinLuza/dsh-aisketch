@@ -9,10 +9,10 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { DrawShapeElement } from '@aisketch/cards-core'
-import { parseDrawPathData } from '@aisketch/cards-core'
+import { DRAW_PENS, DRAW_STROKE_PENS, parseDrawPathData } from '@aisketch/cards-core'
 import {
   arrowHeadPaths, dashArrayFor, flattenPathCommands, jitterPoints, outlineSubpath, penSpec,
-  pixelParts, polylineD, renderPathElement, renderShapeElement, rngFor, shapeOutline, tapePath, wobblePolyline,
+  pixelParts, polylineD, renderPathElement, renderShapeElement, resolveGradient, rngFor, shapeOutline, tapePath, wobblePolyline,
 } from '../src/client/draw-engine.ts'
 
 describe('flattenPathCommands', () => {
@@ -98,6 +98,12 @@ describe('penSpec', () => {
     expect(highlighter.width).toBeGreaterThan(marker.width)
     expect(highlighter.opacity).toBeLessThan(marker.opacity)
   })
+
+  it('lists exactly the pens a dash can land on', () => {
+    // The Host refuses `dash` on anything outside DRAW_STROKE_PENS, so a pen
+    // recipe that changed kind here would silently make that refusal a lie.
+    expect(DRAW_PENS.filter(pen => penSpec(pen, 2).kind === 'stroke')).toEqual([...DRAW_STROKE_PENS])
+  })
 })
 
 describe('outlineSubpath', () => {
@@ -168,6 +174,13 @@ describe('shape rendering', () => {
     expect(parts[1]).toMatchObject({ color: '#c5221f', width: 2 })
   })
 
+  it('fades outline and arrowheads together, leaving the wash at its own opacity', () => {
+    const arrow: DrawShapeElement = { ...rect, shape: 'arrow', w: 100, h: 0, strokeOpacity: 0.2 }
+    expect(renderShapeElement(arrow, rngFor(1)).map(part => part.opacity)).toEqual([0.2, 0.2])
+    const washed = renderShapeElement({ ...rect, fillOpacity: 0.6, strokeOpacity: 0.2 }, rngFor(1))
+    expect(washed.map(part => part.opacity)).toEqual([0.6, 0.2])
+  })
+
   it('emits arrowheads after the shaft, one per requested end', () => {
     const arrow: DrawShapeElement = { ...rect, shape: 'arrow', fill: undefined, w: 100, h: 0 }
     const parts = renderShapeElement(arrow, rngFor(1))
@@ -218,7 +231,10 @@ describe('shape rendering', () => {
 
 describe('path rendering', () => {
   /** One straight centerline, the base every pen case reuses. */
-  const line = { type: 'path' as const, d: 'M 0 0 L 100 0', pen: 'ball' as const, color: 'blue', width: 3 }
+  const line = {
+    type: 'path' as const, d: 'M 0 0 L 100 0', pen: 'ball' as const,
+    color: 'blue', width: 3, dash: 'solid' as const,
+  }
 
   it('strokes a ballpoint path with one part', () => {
     const parts = renderPathElement({ ...line, pen: 'ball' }, rngFor(1))
@@ -242,6 +258,40 @@ describe('path rendering', () => {
 
   it('returns nothing for a d that does not parse', () => {
     expect(renderPathElement({ ...line, d: 'L 10 10' }, rngFor(1))).toHaveLength(0)
+  })
+
+  it('carries a dash pattern on the stroke and none on a solid one', () => {
+    expect(renderPathElement(line, rngFor(1))[0]).toMatchObject({ dasharray: undefined })
+    const parts = renderPathElement({ ...line, dash: 'dashed' }, rngFor(1))
+    const stroke = parts[0]
+    if (stroke?.kind !== 'stroke') return
+    expect(stroke.dasharray).toBe('8 6')
+    expect(stroke.d).toBe(renderPathElement({ ...line, dash: 'dashed' }, rngFor(1))[0]?.d)
+  })
+
+  it('fades ink without changing the geometry the pen produced', () => {
+    const strong = renderPathElement({ ...line, pen: 'fountain' }, rngFor(1))[0]
+    const faint = renderPathElement({ ...line, pen: 'fountain', strokeOpacity: 0.4 }, rngFor(1))[0]
+    if (strong?.kind !== 'fill' || faint?.kind !== 'fill') return
+    expect(faint.d).toBe(strong.d)
+    expect(faint.opacity).toBeCloseTo(strong.opacity * 0.4, 10)
+  })
+
+  it('fades the pencil grain by the same factor as its main pass', () => {
+    const parts = renderPathElement({ ...line, pen: 'pencil', strokeOpacity: 0.5 }, rngFor(1))
+    const main = parts[0]
+    const grain = parts[1]
+    if (main?.kind !== 'stroke' || grain?.kind !== 'stroke') return
+    expect(main.opacity).toBeCloseTo(0.425, 10)
+    expect(grain.opacity).toBeCloseTo(0.15, 10)
+  })
+
+  it('leaves a fill wash at its own opacity when only the stroke fades', () => {
+    const parts = renderPathElement(
+      { ...line, d: 'M 0 0 L 40 0 L 40 30 Z', fill: 'red', fillOpacity: 0.3, strokeOpacity: 0.1 },
+      rngFor(1),
+    )
+    expect(parts.map(part => part.opacity)).toEqual([0.3, 0.92 * 0.1])
   })
 })
 
@@ -296,5 +346,91 @@ describe('the primitives the renderer builds on', () => {
     const second = rngFor(3)
     expect([first(), first(), first()]).toEqual([second(), second(), second()])
     expect(rngFor(4)()).not.toBe(rngFor(3)())
+  })
+})
+
+describe('gradient fills', () => {
+  /** A 200x100 box whose centre is (200, 100). */
+  const box = { x: 100, y: 50, w: 200, h: 100 }
+
+  /** A two-stop ramp, the shape every case starts from. */
+  const ramp = {
+    type: 'linear' as const,
+    angle: 180,
+    center: undefined,
+    radius: undefined,
+    stops: [
+      { offset: 0, color: 'red' as const, opacity: 1 },
+      { offset: 1, color: 'blue' as const, opacity: 1 },
+    ],
+  }
+
+  it('spans a linear ramp across the box in CSS angle order', () => {
+    const down = resolveGradient(ramp, box)
+    expect(down.y1).toBeLessThan(down.y2)
+    expect(down.x1).toBeCloseTo(down.x2)
+    expect(down.y1).toBeCloseTo(50)
+    expect(down.y2).toBeCloseTo(150)
+    const right = resolveGradient({ ...ramp, angle: 90 }, box)
+    expect(right.x1).toBeCloseTo(100)
+    expect(right.x2).toBeCloseTo(300)
+    expect(right.y1).toBeCloseTo(right.y2)
+  })
+
+  it('defaults a radial ramp to the box centre and half its diagonal, resolving named stops', () => {
+    const radial = resolveGradient({ ...ramp, type: 'radial', stops: [{ offset: 0, color: 'blue', opacity: 1 }, { offset: 1, color: 'white', opacity: 0 }] }, box)
+    expect(radial.cx).toBe(200)
+    expect(radial.cy).toBe(100)
+    expect(radial.r).toBeCloseTo(Math.hypot(200, 100) / 2)
+    expect(radial.stops[0]).toEqual({ offset: 0, color: '#378add', opacity: 1 })
+  })
+
+  it('carries the gradient onto a shape fill and keeps the first stop as the flat fallback', () => {
+    const element: DrawShapeElement = {
+      type: 'shape', shape: 'rect', x: 100, y: 50, w: 200, h: 100,
+      color: 'red', fill: ramp, width: 2, dash: 'solid', arrowStart: false, rough: false,
+    }
+    const parts = renderShapeElement(element, rngFor(1))
+    const fill = parts[0]
+    expect(fill?.kind).toBe('fill')
+    if (fill?.kind !== 'fill') return
+    expect(fill.color).toBe('#c5221f')
+    expect(fill.gradient?.stops.map(stop => stop.color)).toEqual(['#c5221f', '#378add'])
+  })
+
+  it('takes a path gradient from the filled subpaths box, not the canvas', () => {
+    const parts = renderPathElement({
+      type: 'path', d: 'M 10 10 L 110 10 L 110 60 Z', pen: 'ball',
+      color: undefined, width: 1, dash: 'solid', fill: { ...ramp, angle: 90 }, fillOpacity: 1,
+    }, rngFor(1))
+    const fill = parts[0]
+    expect(fill?.kind).toBe('fill')
+    if (fill?.kind !== 'fill') return
+    expect(fill.gradient?.x1).toBeCloseTo(10)
+    expect(fill.gradient?.x2).toBeCloseTo(110)
+  })
+
+  it('is reproducible: the same fill twice resolves to the same geometry', () => {
+    expect(resolveGradient(ramp, box)).toEqual(resolveGradient(ramp, box))
+  })
+})
+
+describe('blend modes on parts', () => {
+  it('stamps the element blend on fills, strokes and the pencil grain', () => {
+    const stencil = {
+      type: 'path' as const, d: 'M 0 0 L 100 0', pen: 'pencil' as const,
+      color: 'blue', width: 3, dash: 'solid' as const, blend: 'multiply' as const,
+      fill: 'red' as const, fillOpacity: 0.5, strokeOpacity: 0.8,
+    }
+    const parts = renderPathElement({ ...stencil, d: 'M 0 0 L 100 0 L 100 40 Z' }, rngFor(1))
+    expect(parts.length).toBeGreaterThan(1)
+    for (const part of parts) expect(part.blend).toBe('multiply')
+  })
+
+  it('defaults a hand-built element to normal', () => {
+    const parts = renderPathElement({
+      type: 'path', d: 'M 0 0 L 10 0', pen: 'ball', color: 'blue', width: 2, dash: 'solid',
+    }, rngFor(1))
+    expect(parts[0]?.blend).toBe('normal')
   })
 })

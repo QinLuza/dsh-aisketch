@@ -15,7 +15,10 @@
 
 import { parseDrawPathData, resolveDrawColor } from './index.ts'
 import type {
+  DrawBlend,
   DrawDash,
+  DrawFill,
+  DrawGradient,
   DrawPathCommand,
   DrawPathElement,
   DrawPen,
@@ -506,14 +509,47 @@ export interface InkStroke {
   readonly opacity: number
   readonly cap: 'round' | 'butt'
   readonly dasharray: string | undefined
+  readonly blend: DrawBlend
+  readonly blur: number
+}
+
+/** One gradient stop with its color already resolved to a paint value. */
+export interface InkGradientStop {
+  readonly offset: number
+  readonly color: string
+  readonly opacity: number
+}
+
+/**
+ * A gradient resolved to canvas geometry, so every renderer paints the same ramp.
+ *
+ * The engine, not the model, decides where the ramp starts and ends: a linear
+ * gradient spans the element's box along its angle, a radial one is a circle
+ * inside it. That is what keeps "same payload, same picture" true for gradients
+ * as much as for strokes. `x1/y1/x2/y2` apply to linear, `cx/cy/r` to radial.
+ */
+export interface InkGradient {
+  readonly type: 'linear' | 'radial'
+  readonly stops: readonly InkGradientStop[]
+  readonly x1: number
+  readonly y1: number
+  readonly x2: number
+  readonly y2: number
+  readonly cx: number
+  readonly cy: number
+  readonly r: number
 }
 
 /** One filled area the renderer paints: a stroke outline, a shape fill, or an arrowhead. */
 export interface InkFill {
   readonly kind: 'fill'
   readonly d: string
+  /** Flat paint value; for a gradient this is its first stop, a safe fallback. */
   readonly color: string
+  readonly gradient?: InkGradient
   readonly opacity: number
+  readonly blend: DrawBlend
+  readonly blur: number
 }
 
 /** One painted part of a drawing element, in paint order. */
@@ -557,19 +593,113 @@ function splitSubpaths(commands: readonly DrawPathCommand[]): { points: readonly
   return subpaths
 }
 
+/** An axis-aligned box in canvas units. */
+export interface Box {
+  readonly x: number
+  readonly y: number
+  readonly w: number
+  readonly h: number
+}
+
+/** The union box of a point list, or a zero box when there is nothing to measure. */
+export function boxOfPoints(points: readonly Pt[]): Box {
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  for (const point of points) {
+    if (point.x < minX) minX = point.x
+    if (point.y < minY) minY = point.y
+    if (point.x > maxX) maxX = point.x
+    if (point.y > maxY) maxY = point.y
+  }
+  if (!Number.isFinite(minX)) return { x: 0, y: 0, w: 0, h: 0 }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+}
+
+/**
+ * Resolve a declarative gradient against the box it fills.
+ *
+ * A linear ramp spans the box along its angle, so offset 0 sits on one edge and
+ * 1 on the opposite one regardless of the box's shape; a radial one is a circle
+ * whose default centre is the box centre and whose default radius reaches the
+ * box corner. Both choices are geometry, not style, so they belong here.
+ * @param gradient - the validated gradient.
+ * @param box - the filled element's box, in canvas units.
+ * @returns the gradient with concrete canvas geometry and resolved colors.
+ */
+export function resolveGradient(gradient: DrawGradient, box: Box): InkGradient {
+  const stops: InkGradientStop[] = gradient.stops.map(stop => ({
+    offset: stop.offset,
+    color: resolveDrawColor(stop.color),
+    opacity: stop.opacity,
+  }))
+  const centreX = box.x + box.w / 2
+  const centreY = box.y + box.h / 2
+  if (gradient.type === 'linear') {
+    // CSS angle: 0 points up, 90 right, 180 down. Screen y grows downward, so the
+    // vertical component is negated against the cosine.
+    const radians = (gradient.angle * Math.PI) / 180
+    const dx = Math.sin(radians)
+    const dy = -Math.cos(radians)
+    const half = (Math.abs(box.w * dx) + Math.abs(box.h * dy)) / 2
+    return {
+      type: 'linear',
+      stops,
+      x1: centreX - dx * half,
+      y1: centreY - dy * half,
+      x2: centreX + dx * half,
+      y2: centreY + dy * half,
+      cx: centreX,
+      cy: centreY,
+      r: 0,
+    }
+  }
+  const center = gradient.center ?? { x: centreX, y: centreY }
+  return {
+    type: 'radial',
+    stops,
+    x1: 0,
+    y1: 0,
+    x2: 0,
+    y2: 0,
+    cx: center.x,
+    cy: center.y,
+    r: Math.max(gradient.radius ?? Math.hypot(box.w, box.h) / 2, 0.01),
+  }
+}
+
+/**
+ * Turn a fill into the parts a renderer needs: a flat color, plus a gradient
+ * when the model asked for one.
+ * @param fill - the element's fill.
+ * @param box - the filled element's box, in canvas units.
+ * @returns the flat fallback color and, for a gradient, its resolved geometry.
+ */
+export function resolveFillPaint(fill: DrawFill, box: Box): { readonly color: string; readonly gradient: InkGradient | undefined } {
+  if (typeof fill === 'string') return { color: resolveDrawColor(fill), gradient: undefined }
+  const gradient = resolveGradient(fill, box)
+  return { color: gradient.stops[0]?.color ?? '#000000', gradient }
+}
+
 /**
  * The filled areas a path element contributes, before its stroke.
  * @param commands - the element's normalized commands.
- * @param color - the resolved fill color.
+ * @param fill - the resolved fill: a color or a gradient.
  * @param opacity - the fill's opacity.
  * @returns one fill per closed subpath, in declaration order.
  */
-function filledSubpathParts(commands: readonly DrawPathCommand[], color: string, opacity: number): InkPart[] {
+function filledSubpathParts(commands: readonly DrawPathCommand[], fill: DrawFill, opacity: number, blend: DrawBlend, blur: number): InkPart[] {
+  const closed = splitSubpaths(commands).filter(subpath => subpath.closed)
+  if (closed.length === 0) return []
+  const paint = resolveFillPaint(fill, boxOfPoints(closed.flatMap(subpath => [...subpath.points])))
   const parts: InkPart[] = []
-  for (const subpath of splitSubpaths(commands)) {
-    if (!subpath.closed) continue
+  for (const subpath of closed) {
     const d = polylineD(subpath.points, true)
-    if (d.length > 0) parts.push({ kind: 'fill', d, color, opacity })
+    if (d.length === 0) continue
+    parts.push(paint.gradient === undefined
+      ? { kind: 'fill', d, color: paint.color, opacity, blend, blur }
+      : { kind: 'fill', d, color: paint.color, gradient: paint.gradient, opacity, blend, blur })
   }
   return parts
 }
@@ -594,9 +724,11 @@ export function renderPathElement(element: DrawPathElement, rng: () => number): 
   const subpaths = flattenPathCommands(parsed.commands)
   if (subpaths.length === 0) return []
   const color = resolveDrawColor(element.color)
+  const fade = element.strokeOpacity ?? 1
+  const dasharray = dashArrayFor(element.dash)
   const fills = element.fill === undefined
     ? []
-    : filledSubpathParts(parsed.commands, resolveDrawColor(element.fill), element.fillOpacity ?? 1)
+    : filledSubpathParts(parsed.commands, element.fill, element.fillOpacity ?? 1, element.blend ?? 'normal', element.blur ?? 0)
   const spec = penSpec(element.pen, element.width)
   if (spec.kind === 'stroke') {
     const d = subpaths
@@ -605,14 +737,14 @@ export function renderPathElement(element: DrawPathElement, rng: () => number): 
       .join(' ')
     const parts: InkPart[] = d.length === 0
       ? []
-      : [{ kind: 'stroke', d, color, width: spec.width, opacity: spec.opacity, cap: spec.cap, dasharray: undefined }]
+      : [{ kind: 'stroke', d, color, width: spec.width, opacity: spec.opacity * fade, cap: spec.cap, dasharray, blend: element.blend ?? 'normal', blur: element.blur ?? 0 }]
     if (spec.grain) {
       const grain = subpaths
         .map(points => polylineD(jitterPoints(points, rng, 0.5), false))
         .filter(part => part.length > 0)
         .join(' ')
       if (grain.length > 0) {
-        parts.push({ kind: 'stroke', d: grain, color, width: spec.width * 0.5, opacity: 0.3, cap: 'round', dasharray: undefined })
+        parts.push({ kind: 'stroke', d: grain, color, width: spec.width * 0.5, opacity: 0.3 * fade, cap: 'round', dasharray, blend: element.blend ?? 'normal', blur: element.blur ?? 0 })
       }
     }
     return [...fills, ...parts]
@@ -620,7 +752,7 @@ export function renderPathElement(element: DrawPathElement, rng: () => number): 
   const outlined = subpaths
     .map(points => outlineSubpath(points, spec.halfWidth))
     .filter(d => d.length > 0)
-    .map(d => ({ kind: 'fill' as const, d, color, opacity: spec.opacity }))
+    .map(d => ({ kind: 'fill' as const, d, color, opacity: spec.opacity * fade, blend: element.blend ?? 'normal', blur: element.blur ?? 0 }))
   return [...fills, ...outlined]
 }
 
@@ -639,13 +771,24 @@ export function renderShapeElement(element: DrawShapeElement, rng: () => number)
       : wobblePolyline(outline.points, outline.closed, rng)
     : outline.points
   const color = resolveDrawColor(element.color)
+  const ink = element.strokeOpacity ?? 0.95
   const parts: InkPart[] = []
   if (element.fill !== undefined && outline.closed) {
+    const paint = resolveFillPaint(element.fill, {
+      x: Math.min(element.x, element.x + element.w),
+      y: Math.min(element.y, element.y + element.h),
+      w: Math.abs(element.w),
+      h: Math.abs(element.h),
+    })
     parts.push({
       kind: 'fill',
       d: polylineD(points, true),
-      color: resolveDrawColor(element.fill),
-      opacity: element.fillOpacity ?? 0.25,
+      color: paint.color,
+      ...paint.gradient === undefined ? {} : { gradient: paint.gradient },
+      // A flat shape fill is a tint over paper (0.25); a gradient carries its own
+      // alpha per stop, so defaulting it to a wash would only dull it.
+      opacity: element.fillOpacity ?? (paint.gradient === undefined ? 0.25 : 1),
+      blend: element.blend ?? 'normal', blur: element.blur ?? 0,
     })
   }
   parts.push({
@@ -653,13 +796,14 @@ export function renderShapeElement(element: DrawShapeElement, rng: () => number)
     d: polylineD(points, outline.closed),
     color,
     width: element.width,
-    opacity: 0.95,
+    opacity: ink,
     cap: 'round',
+    blend: element.blend ?? 'normal', blur: element.blur ?? 0,
     dasharray: dashArrayFor(element.dash),
   })
   if (element.shape === 'arrow') {
     for (const d of arrowHeadPaths(element)) {
-      parts.push({ kind: 'fill', d, color, opacity: 0.95 })
+      parts.push({ kind: 'fill', d, color, opacity: ink, blend: element.blend ?? 'normal', blur: element.blur ?? 0 })
     }
   }
   return parts
@@ -715,6 +859,7 @@ export function pixelParts(element: DrawPixelElement): readonly InkPart[] {
   return [...groups.entries()].map(([color, rects]) => ({
     kind: 'fill' as const,
     d: rects.join(' '),
+    blend: element.blend ?? 'normal', blur: 0,
     color,
     opacity: 1,
   }))

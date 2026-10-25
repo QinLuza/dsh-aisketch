@@ -1,6 +1,6 @@
 {
   "name": "@aisketch/sketch-tool",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Model-facing sketch_function tool: draws function graphs, calculus demos, and data charts from an expression instead of generated HTML",
   "type": "module",
   "license": "MIT",
@@ -41,6 +41,8 @@
     "deepseek-harness",
     "function-plot",
     "calculus",
-    "visualization"
+    "visualization",
+    "tool",
+    "math"
   ]
 }

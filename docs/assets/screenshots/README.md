@@ -17,6 +17,10 @@ All images in this directory are **card crops rendered by this plugin inside a l
 | `table-physics.png` | `show_card` · `table` |
 | `flowchart-parity.png` | `show_card` · `flowchart` (expanded view) |
 | `draw-illustration.png` | `show_card` · `draw` (final, 1200×800) |
+| `draw-dashed-prism.png` | `draw` · `path.dash` on hidden edges + `strokeOpacity` |
+| `draw-gradient-dusk.png` | `draw` · linear sky/sea gradient + radial sun glow |
+| `draw-light-blur.png` | `draw` · `blend: screen/multiply` + `blur` light shaft |
+| `draw-scene-snapshot.png` | `draw` · rendered through the bitmap snapshot path |
 | `figure-incline-30.png` | `show_card` · `figure` · `incline_force` |
 | `figure-connected-table-pulley.png` | `show_card` · `figure` · `connected_bodies` |
 | `figure-orbital-zn.png` | `show_card` · `figure` · `orbital_diagram` |

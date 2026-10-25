@@ -2,6 +2,35 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.3.0] — 2026-10-25
+
+手绘卡补上「光」与「墨」的表达力，并把重卡的渲染改成一次性位图快照。
+
+### 新增
+
+- **`draw` 的画布与墨色**
+  - `background`：载荷级画布底色（命名色 / `#rgb` / `#rrggbb`），画在纸纹之下、墨迹之上；预览、光栅回读、SVG 导出共用同一解析结果。
+  - `strokeOpacity`（0..1）`path` / `shape`：同一支笔的浓淡，按笔型配方相乘；`fill`/`fillOpacity` 的水洗不受影响。
+  - `dash` 扩到 `path`：自由曲线可画虚线/点线；只对描边型笔（ball / marker / pencil / highlighter）生效，填充轮廓的笔会得到一条可纠正的错误。
+- **声明式渐变填充**：`fill` 接受 `{ type: "linear" | "radial", from/to | stops(2..8), angle, center, radius }`。
+  - 角度用 CSS `linear-gradient` 约定（0 朝上、90 朝右、180 朝下，默认 180），两色过渡可用 `from`/`to` 简写。
+  - 几何由引擎按元素包围盒解析（线性沿角度横跨包围盒、径向默认中心 + 半对角线），模型不给坐标。
+  - 光栅预览逐像素采样，颜色与 stop alpha 分开插值；SVG 导出与卡片用同一份 `defs`。
+- **混合模式** `blend`：`normal` / `multiply` / `screen` / `overlay` / `soft-light`，可用在 `path` / `shape` / `pixels`；光栅按 CSS 合成公式在同一次合成里计算，`normal` 像素级不变。
+- **模糊** `blur`（画布单位，0..120）：`path` / `shape`。光栅模糊覆盖率而不是像素（无 RGBA 隔离缓冲，渐变模糊后仍是渐变）；浏览器写 `filter: blur(blur/2)`，两端同一个 σ 标准。
+
+### 改动
+
+- **`draw` 卡片改为位图快照**：先渲染隐藏 SVG → 序列化（解析 `var()`、内联字体）→ `Image` → `canvas`，随后卸载 SVG；卡片与放大对话框共用一张位图并缓存（LRU 6）。
+  - 实测同一张 340 条 `path` 的卡：首次滚动从「中位 41ms / 单帧 407ms」回到 17ms，放大从 539ms 卡顿降到约 97ms。
+  - 代价：文字不可选中、每张 1200×800 卡约 8.6MB 显存、首次上屏约 100–300ms 占位；快照失败时回退到活 SVG。
+
+### 验证
+
+- 539 例单元/集成测试（cards-core 194 / client-ui-cards 170 / sketch-core 58 / cards-tool 52 / client-ui-sketch 37 / sketch-tool 28），六个包 `tsc --noEmit` 全清。
+- 对照实验：渐变角度翻转、光栅退化成平涂、混合公式失效、模糊不生效，分别会让对应测试变红（4 / 3 / 5 / 3 例）。
+- 真机：读渲染后的 DOM 验证 `linearGradient` 停点、`radialGradient` 末停点 `opacity: 0`、`stroke-dasharray`、`mix-blend-mode`、`filter` 与位图快照尺寸。
+
 ## [0.2.0] — 2026-10-24
 
 公开作用域改为 `@aisketch/*`，新增 `draw` 与 `figure` 两类原生卡片。

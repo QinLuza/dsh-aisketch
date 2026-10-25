@@ -49,9 +49,74 @@ describe('DrawCard', () => {
     expect(html).toContain('cd-expand')
   })
 
+  it('paints a payload background under the paper rules and the ink', () => {
+    const night: CardSpec = {
+      version: 1,
+      kind: 'draw',
+      payload: { background: '#102030', paper: 'dots', elements: [{ type: 'path', d: 'M 0 0 L 10 10' }] },
+    }
+    const html = renderToStaticMarkup(<DrawCard card={night} t={t} />)
+    expect(html).toContain('#102030')
+    // Under the rules: the background rect is emitted before the tiled paper.
+    expect(html.indexOf('#102030')).toBeLessThan(html.indexOf('fill="url(#cd-draw-paper-dots)"'))
+  })
+
   it('falls back to the raw view for an unreadable payload', () => {
     const broken: CardSpec = { version: 1, kind: 'draw', payload: { elements: [] } }
     const html = renderToStaticMarkup(<DrawCard card={broken} t={t} />)
     expect(html).toContain('cd-raw')
+  })
+})
+
+describe('DrawCard gradients', () => {
+  it('emits a gradient definition and fills with a reference to it', () => {
+    const gradient: CardSpec = {
+      version: 1,
+      kind: 'draw',
+      payload: {
+        elements: [{
+          type: 'shape', shape: 'rect', x: 0, y: 0, w: 200, h: 100, color: 'red', strokeOpacity: 0,
+          fill: { type: 'linear', from: 'blue', to: 'red', angle: 180 },
+        }],
+      },
+    }
+    const html = renderToStaticMarkup(<DrawCard card={gradient} t={t} />)
+    expect(html).toContain('<linearGradient')
+    expect(html).toContain('url(#cdg-')
+    expect(html).toContain('stop-color="#378add"')
+  })
+})
+
+describe('DrawCard blend modes', () => {
+  it('writes the element blend onto its paths', () => {
+    const blended: CardSpec = {
+      version: 1,
+      kind: 'draw',
+      payload: {
+        elements: [{
+          type: 'shape', shape: 'rect', x: 0, y: 0, w: 200, h: 100,
+          color: 'white', strokeOpacity: 0, fill: 'orange', fillOpacity: 1, blend: 'screen',
+        }],
+      },
+    }
+    const html = renderToStaticMarkup(<DrawCard card={blended} t={t} />)
+    expect(html).toContain('mix-blend-mode:screen')
+  })
+})
+
+describe('DrawCard blur', () => {
+  it('writes half the spread as a CSS blur', () => {
+    const soft: CardSpec = {
+      version: 1,
+      kind: 'draw',
+      payload: {
+        elements: [{
+          type: 'shape', shape: 'rect', x: 0, y: 0, w: 200, h: 100,
+          color: 'white', strokeOpacity: 0, fill: 'orange', fillOpacity: 1, blur: 30,
+        }],
+      },
+    }
+    const html = renderToStaticMarkup(<DrawCard card={soft} t={t} />)
+    expect(html).toContain('blur(15px)')
   })
 })

@@ -40,6 +40,8 @@ export const CLS = {
   nodeLabel: 'cd-node-label',
   drawScroll: 'cd-draw-scroll',
   drawSvg: 'cd-draw-svg',
+  drawCanvas: 'cd-draw-canvas',
+  drawPlaceholder: 'cd-draw-placeholder',
   drawText: 'cd-draw-text',
   drawHand: 'cd-draw-hand',
   figureScroll: 'cd-figure-scroll',
@@ -188,6 +190,14 @@ const SHEET = `
   display: block;
   max-width: 100%;
   height: auto;
+}
+.${CLS.drawCanvas} {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.${CLS.drawPlaceholder} {
+  width: 100%;
 }
 .${CLS.drawText} {
   font-family: inherit;

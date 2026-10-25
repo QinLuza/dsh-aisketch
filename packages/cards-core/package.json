@@ -1,6 +1,6 @@
 {
   "name": "@aisketch/cards-core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Generic in-conversation card contract: versioned declarative CardSpec, envelope validation, and the table payload parser shared by the Host tool and the browser renderer",
   "type": "module",
   "license": "MIT",
@@ -33,6 +33,11 @@
     "deepseek-harness",
     "card",
     "schema",
-    "validation"
+    "validation",
+    "cards",
+    "svg",
+    "gradient",
+    "blend-mode",
+    "blur"
   ]
 }

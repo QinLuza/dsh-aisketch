@@ -20,6 +20,7 @@
 
 import { parseDrawPathData, resolveDrawColor } from './index.ts'
 import type {
+  DrawBlend,
   DrawElement,
   DrawPaper,
   DrawPayload,
@@ -28,7 +29,7 @@ import type {
   DrawTextAnchor,
 } from './index.ts'
 import { flattenPathCommands, pixelParts, renderPathElement, renderShapeElement, rngFor, tapePath } from './draw-engine.ts'
-import type { InkPart, Pt } from './draw-engine.ts'
+import type { InkGradient, InkPart, Pt } from './draw-engine.ts'
 
 /** The colors a preview paints theme ink and paper rules with. */
 export interface DrawPreviewTheme {
@@ -59,8 +60,13 @@ export interface DrawBox {
 export interface DrawInkPolygon {
   readonly kind: 'polygon'
   readonly points: readonly Pt[]
+  /** Flat paint value; for a gradient this is its first stop. */
   readonly color: string
+  /** Resolved gradient, when the element asked for one instead of a flat fill. */
+  readonly gradient?: InkGradient
   readonly opacity: number
+  readonly blend: DrawBlend
+  readonly blur: number
 }
 
 /** A constant-width line along a centerline. */
@@ -73,6 +79,8 @@ export interface DrawInkPolyline {
   readonly closed: boolean
   readonly cap: 'round' | 'butt'
   readonly dasharray: string | undefined
+  readonly blend: DrawBlend
+  readonly blur: number
 }
 
 /** A filled rectangle: a pixel cell or one character's footprint. */
@@ -84,6 +92,8 @@ export interface DrawInkBlock {
   readonly h: number
   readonly color: string
   readonly opacity: number
+  readonly blend: DrawBlend
+  readonly blur: number
 }
 
 /** One paintable piece of the drawing. */
@@ -162,7 +172,15 @@ function inksOfPart(part: InkPart, theme: DrawPreviewTheme): DrawInk[] {
   for (const points of subpathsOf(part.d)) {
     if (points.length < 2) continue
     if (part.kind === 'fill') {
-      inks.push({ kind: 'polygon', points, color: part.color, opacity: part.opacity })
+      inks.push({
+        kind: 'polygon',
+        points,
+        color: part.color,
+        ...part.gradient === undefined ? {} : { gradient: part.gradient },
+        opacity: part.opacity,
+        blend: part.blend,
+        blur: part.blur,
+      })
     } else {
       inks.push({
         kind: 'polyline',
@@ -173,6 +191,8 @@ function inksOfPart(part: InkPart, theme: DrawPreviewTheme): DrawInk[] {
         closed,
         cap: part.cap,
         dasharray: part.dasharray,
+        blend: part.blend,
+        blur: part.blur,
       })
     }
   }
@@ -223,6 +243,8 @@ export function textInkBlocks(element: DrawTextElement, theme: DrawPreviewTheme 
           h: height,
           color,
           opacity: element.bold ? 0.78 : 0.62,
+          blend: 'normal',
+          blur: 0,
         })
       }
       cursor += advance
@@ -273,6 +295,8 @@ export function elementInks(element: DrawElement, index: number, theme: DrawPrev
     points,
     color: resolvePreviewPaint(element.color ?? 'yellow', theme),
     opacity: 0.42,
+    blend: 'normal',
+    blur: 0,
   }]
 }
 
@@ -329,7 +353,9 @@ export function buildDrawDisplayList(
     width: draw.size.w,
     height: draw.size.h,
     paper: draw.paper,
-    background: theme.surface,
+    // A payload background wins over the card surface: it is the one color the
+    // preview and the card must agree on, or a night scene previews as white.
+    background: draw.background === undefined ? theme.surface : resolvePreviewPaint(draw.background, theme),
     theme,
     groups,
     paints,
@@ -378,19 +404,44 @@ function paperMarkup(list: DrawDisplayList): string {
   return lines.join('')
 }
 
+/** The inline style an ink piece needs (blend, blur), or an empty string. */
+function inkStyle(ink: DrawInk): string {
+  const declarations: string[] = []
+  if (ink.blend !== 'normal') declarations.push(`mix-blend-mode:${ink.blend}`)
+  // A blur field is the visible spread; CSS blur() is a Gaussian stdDeviation.
+  if (ink.blur > 0) declarations.push(`filter:blur(${n(ink.blur / 2)}px)`)
+  return declarations.length === 0 ? '' : ` style="${declarations.join(';')}"`
+}
+
 /** One ink piece as standalone SVG markup. */
-function inkMarkup(ink: DrawInk): string {
+function inkMarkup(ink: DrawInk, gradientId?: string): string {
+  const blend = inkStyle(ink)
   if (ink.kind === 'block') {
-    return `<rect x="${n(ink.x)}" y="${n(ink.y)}" width="${n(ink.w)}" height="${n(ink.h)}" fill="${ink.color}" fill-opacity="${n(ink.opacity)}"/>`
+    return `<rect x="${n(ink.x)}" y="${n(ink.y)}" width="${n(ink.w)}" height="${n(ink.h)}" fill="${ink.color}" fill-opacity="${n(ink.opacity)}"${blend}/>`
   }
   const points = ink.points.map(point => `${n(point.x)},${n(point.y)}`).join(' ')
   if (ink.kind === 'polygon') {
-    return `<polygon points="${points}" fill="${ink.color}" fill-opacity="${n(ink.opacity)}"/>`
+    const paint = gradientId === undefined ? ink.color : `url(#${gradientId})`
+    return `<polygon points="${points}" fill="${paint}" fill-opacity="${n(ink.opacity)}"${blend}/>`
   }
   const dash = ink.dasharray === undefined ? '' : ` stroke-dasharray="${ink.dasharray}"`
   return `<polyline points="${points}" fill="none" stroke="${ink.color}" stroke-opacity="${n(ink.opacity)}"`
-    + ` stroke-width="${n(ink.width)}" stroke-linecap="${ink.cap}" stroke-linejoin="round"${dash}`
+    + ` stroke-width="${n(ink.width)}" stroke-linecap="${ink.cap}" stroke-linejoin="round"${dash}${blend}`
     + `${ink.closed ? ' data-closed="true"' : ''}/>`
+}
+
+/** One gradient as an SVG definition, in canvas coordinates. */
+function gradientMarkup(id: string, gradient: InkGradient): string {
+  const stops = gradient.stops
+    .map(stop => `<stop offset="${n(stop.offset)}" stop-color="${stop.color}" stop-opacity="${n(stop.opacity)}"/>`)
+    .join('')
+  if (gradient.type === 'linear') {
+    return `<linearGradient id="${id}" gradientUnits="userSpaceOnUse"`
+      + ` x1="${n(gradient.x1)}" y1="${n(gradient.y1)}" x2="${n(gradient.x2)}" y2="${n(gradient.y2)}">`
+      + `${stops}</linearGradient>`
+  }
+  return `<radialGradient id="${id}" gradientUnits="userSpaceOnUse"`
+    + ` cx="${n(gradient.cx)}" cy="${n(gradient.cy)}" r="${n(gradient.r)}">${stops}</radialGradient>`
 }
 
 /**
@@ -404,9 +455,18 @@ function inkMarkup(ink: DrawInk): string {
  */
 export function drawSvgMarkup(list: DrawDisplayList, title?: string): string {
   const label = title === undefined ? '' : `<title>${escapeXmlText(title)}</title>`
-  const body = list.paints.map(inkMarkup).join('')
+  const ids = new Map<DrawInk, string>()
+  const definitions: string[] = []
+  for (const ink of list.paints) {
+    if (ink.kind !== 'polygon' || ink.gradient === undefined) continue
+    const id = `cdg${definitions.length}`
+    ids.set(ink, id)
+    definitions.push(gradientMarkup(id, ink.gradient))
+  }
+  const defs = definitions.length === 0 ? '' : `<defs>${definitions.join('')}</defs>`
+  const body = list.paints.map(ink => inkMarkup(ink, ids.get(ink))).join('')
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${n(list.width)}" height="${n(list.height)}"`
     + ` viewBox="0 0 ${n(list.width)} ${n(list.height)}">${label}`
     + `<rect x="0" y="0" width="${n(list.width)}" height="${n(list.height)}" fill="${list.background}"/>`
-    + `${paperMarkup(list)}${body}</svg>`
+    + `${paperMarkup(list)}${defs}${body}</svg>`
 }
